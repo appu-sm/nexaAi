@@ -1,0 +1,28 @@
+name: nexa
+description: A Voice assistant app for android head units.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.1.5 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  speech_to_text: ^6.4.0
+  url_launcher: ^6.2.1
+  flutter_overlay_window: ^0.4.3
+  vosk_flutter: ^0.3.48
+  record: ^4.4.4
+  connectivity_plus: ^5.0.1
+  cupertino_icons: ^1.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/
