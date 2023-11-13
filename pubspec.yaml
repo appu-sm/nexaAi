@@ -20,6 +20,7 @@ dependencies:
   fluttertoast: ^8.2.3
   map_launcher: ^3.0.1
   call_log: ^4.0.0
+  device_installed_apps: ^1.0.1
 
 dev_dependencies:
   flutter_test:

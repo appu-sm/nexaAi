@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:nexa/services/PermissionsSerevice.dart';
+import 'package:nexa/services/permissions_serevice.dart';
 
 void main() {
   runApp(const Nexa());

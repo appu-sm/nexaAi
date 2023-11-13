@@ -1,6 +1,6 @@
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
-import 'package:nexa/services/NotificationService.dart';
+import 'package:nexa/services/notification_service.dart';
 import 'package:call_log/call_log.dart';
 
 class PhoneActivity {

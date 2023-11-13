@@ -4,14 +4,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:vosk_flutter/vosk_flutter.dart';
 
-class OfflineRecognition extends StatefulWidget {
-  const OfflineRecognition({Key? key}) : super(key: key);
+class OfflineEngine extends StatefulWidget {
+  const OfflineEngine({Key? key}) : super(key: key);
 
   @override
-  State<OfflineRecognition> createState() => _OfflineRecognitionState();
+  State<OfflineEngine> createState() => _OfflineRecognitionState();
 }
 
-class _OfflineRecognitionState extends State<OfflineRecognition> {
+class _OfflineRecognitionState extends State<OfflineEngine> {
   static const _textStyle = TextStyle(fontSize: 30, color: Colors.black);
   static const modelAsset = 'assets/models/vosk-model-small-en-in-0.4.zip';
   static const _sampleRate = 16000;

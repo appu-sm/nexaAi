@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:nexa/RecognizeCommand.dart';
+import 'package:nexa/recognize_command.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-class OnlineRecognition extends StatefulWidget {
-  const OnlineRecognition({super.key});
+class OnlineEngine extends StatefulWidget {
+  const OnlineEngine({super.key});
 
   @override
   OnlineRecognitionState createState() => OnlineRecognitionState();
 }
 
-class OnlineRecognitionState extends State<OnlineRecognition> {
+class OnlineRecognitionState extends State<OnlineEngine> {
   stt.SpeechToText speech = stt.SpeechToText();
   String _command = "";
   @override
@@ -65,11 +65,8 @@ class OnlineRecognitionState extends State<OnlineRecognition> {
           children: [
             const Text("Online recognition"),
             ElevatedButton(
-              /*
-              onPressed: () => {
-                RecognizeCommand().processCommand("save this number as aravi")
-              },
-              */
+              //onPressed: () => {RecognizeCommand().processCommand("open maps")},
+
               onPressed: _startListening,
               child: const Text('Start Listening'),
             ),

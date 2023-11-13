@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:nexa/NexaAi.dart';
+import 'package:nexa/nexaai.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class PermissionCheckScreen extends StatelessWidget {

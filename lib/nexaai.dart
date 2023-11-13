@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:nexa/OfflineRecognition.dart';
-import 'package:nexa/OnlineRecognition.dart';
+import 'package:nexa/offline_engine.dart';
+import 'package:nexa/online_engine.dart';
 
 class NexaAi extends StatefulWidget {
   const NexaAi({super.key});
@@ -41,11 +41,11 @@ class NexaAiState extends State<NexaAi> {
     switch (_connectivityResult) {
       case ConnectivityResult.mobile:
       case ConnectivityResult.wifi:
-        homeWidget = const OnlineRecognition();
+        homeWidget = const OnlineEngine();
         break;
       case ConnectivityResult.none:
       default:
-        homeWidget = const OfflineRecognition();
+        homeWidget = const OfflineEngine();
         break;
     }
 
