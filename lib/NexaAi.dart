@@ -13,7 +13,6 @@ class NexaAi extends StatefulWidget {
 class NexaAiState extends State<NexaAi> {
   ConnectivityResult _connectivityResult = ConnectivityResult.none;
   String command = "";
-  dynamic Engine;
 
   @override
   void initState() {
@@ -37,7 +36,6 @@ class NexaAiState extends State<NexaAi> {
 
   @override
   Widget build(BuildContext context) {
-    /*
     // Based on connectivity status, return the appropriate widget
     Widget homeWidget;
     switch (_connectivityResult) {
@@ -53,35 +51,6 @@ class NexaAiState extends State<NexaAi> {
 
     return Scaffold(
       body: homeWidget,
-    );
-    */
-    switch (_connectivityResult) {
-      case ConnectivityResult.mobile:
-      case ConnectivityResult.wifi:
-        Engine = const OnlineRecognition();
-        break;
-      case ConnectivityResult.none:
-      default:
-        Engine = const OfflineRecognition();
-        break;
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Voice Control App'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              onPressed: Engine._startListening,
-              child: Text('Start Listening'),
-            ),
-            Text(command),
-          ],
-        ),
-      ),
     );
   }
 }

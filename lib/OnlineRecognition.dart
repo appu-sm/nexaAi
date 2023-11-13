@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nexa/RecognizeCommand.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:url_launcher/url_launcher.dart';
 
 class OnlineRecognition extends StatefulWidget {
   const OnlineRecognition({super.key});
@@ -11,7 +11,7 @@ class OnlineRecognition extends StatefulWidget {
 
 class OnlineRecognitionState extends State<OnlineRecognition> {
   stt.SpeechToText speech = stt.SpeechToText();
-
+  String _command = "";
   @override
   void initState() {
     super.initState();
@@ -22,6 +22,10 @@ class OnlineRecognitionState extends State<OnlineRecognition> {
     bool available = await speech.initialize(
       onStatus: (status) {
         print('Speech recognition status: $status');
+        print(status.runtimeType);
+        if (status == 'done') {
+          RecognizeCommand().processCommand(_command);
+        }
       },
       onError: (error) {
         print('Speech recognition error: $error');
@@ -40,67 +44,36 @@ class OnlineRecognitionState extends State<OnlineRecognition> {
       onResult: (result) {
         setState(() {
           // Process the recognized speech result
-          _processCommand(result.recognizedWords);
+          _command = result.recognizedWords;
         });
       },
-    );
-  }
-
-  void _processCommand(String command) {
-    if (command.contains('call')) {
-      String contactName = _extractContactName(command);
-      _makeCall(contactName);
-    } else if (command.contains('navigate to')) {
-      String location = _extractLocation(command);
-      _openNavigation(location);
-    }
-    // Add more command processing logic as needed
-  }
-
-  String _extractContactName(String command) {
-    // Implement logic to extract contact name
-    // For simplicity, we'll assume the name follows 'call'
-    return command.split('call').last.trim();
-  }
-
-  String _extractLocation(String command) {
-    // Implement logic to extract location
-    // For simplicity, we'll assume the location follows 'navigate to'
-    return command.split('navigate to').last.trim();
-  }
-
-  void _makeCall(String contactName) async {
-    // Replace this with your actual logic to initiate a call
-    String phoneNumber =
-        ''; // Add logic to get the phone number for the contact
-    String telUri = 'tel:$phoneNumber';
-    if (await canLaunch(telUri)) {
-      await launch(telUri);
-    } else {
-      print('Error launching call');
-    }
-  }
-
-  void _openNavigation(String location) {
-    // Replace this with your actual logic to open navigation
-    print('Opening navigation to $location');
-    // You can use plugins or native platform code to open navigation
+    ).onError((error, stackTrace) => setState(() {
+          // Processing error
+          _command = error.toString();
+        }));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Voice Control App'),
+        title: const Text('NexaAI'),
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const Text("Online recognition"),
             ElevatedButton(
+              /*
+              onPressed: () => {
+                RecognizeCommand().processCommand("save this number as aravi")
+              },
+              */
               onPressed: _startListening,
-              child: Text('Start Listening'),
+              child: const Text('Start Listening'),
             ),
+            Text(_command),
           ],
         ),
       ),

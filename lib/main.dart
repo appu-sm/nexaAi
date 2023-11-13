@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:nexa/NexaAi.dart';
+import 'package:nexa/services/PermissionsSerevice.dart';
 
 void main() {
   runApp(const Nexa());
@@ -10,8 +10,6 @@ class Nexa extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: NexaAi(),
-    );
+    return MaterialApp(home: PermissionCheckScreen());
   }
 }

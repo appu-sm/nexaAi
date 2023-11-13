@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:vosk_flutter/vosk_flutter.dart';
@@ -23,6 +24,7 @@ class _OfflineRecognitionState extends State<OfflineRecognition> {
   SpeechService? _speechService;
   String? command;
   bool _recognitionStarted = false;
+  late StreamSubscription<String> _partialSubscription;
 
   @override
   void initState() {
@@ -41,10 +43,11 @@ class _OfflineRecognitionState extends State<OfflineRecognition> {
           setState(() => _speechService = speechService);
 
           // Listen to the partial results stream
-          _speechService!.onPartial().listen((partial) {
+          _partialSubscription = _speechService!.onPartial().listen((partial) {
             // Parse the JSON string to extract the "partial" field
             Map<String, dynamic> jsonMap = json.decode(partial);
             String partialResult = jsonMap['partial'];
+            if (!mounted) return;
             setState(() {
               // Update the command variable with the partial result
               command = partialResult;
@@ -64,6 +67,7 @@ class _OfflineRecognitionState extends State<OfflineRecognition> {
   @override
   void dispose() {
     // Dispose of the SpeechService instance when the widget is disposed
+    _partialSubscription.cancel();
     _speechService?.stop();
     _speechService?.dispose();
     super.dispose();
@@ -96,19 +100,23 @@ class _OfflineRecognitionState extends State<OfflineRecognition> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const Text("Offline recogition"),
             ElevatedButton(
-                onPressed: () async {
-                  if (_recognitionStarted) {
-                    await _speechService!.stop();
-                    await _speechService?.dispose();
-                  } else {
-                    await _speechService!.start();
-                  }
-                  setState(() => _recognitionStarted = !_recognitionStarted);
-                },
-                child: Text(_recognitionStarted
-                    ? "Stop recognition"
-                    : "Start recognition")),
+              onPressed: () async {
+                if (_recognitionStarted) {
+                  await _speechService?.stop();
+                } else {
+                  await _speechService?.start();
+                }
+                if (!mounted) return;
+                setState(() {
+                  _recognitionStarted = !_recognitionStarted;
+                });
+              },
+              child: Text(
+                _recognitionStarted ? "Stop recognition" : "Start recognition",
+              ),
+            ),
             Text(command ?? ""),
           ],
         ),

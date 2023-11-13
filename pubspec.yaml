@@ -15,7 +15,11 @@ dependencies:
   vosk_flutter: ^0.3.48
   record: ^4.4.4
   connectivity_plus: ^5.0.1
-  cupertino_icons: ^1.0.2
+  flutter_phone_direct_caller: ^2.1.1
+  flutter_contacts: ^1.1.7+1
+  fluttertoast: ^8.2.3
+  map_launcher: ^3.0.1
+  call_log: ^4.0.0
 
 dev_dependencies:
   flutter_test:
