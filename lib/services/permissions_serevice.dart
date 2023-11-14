@@ -10,7 +10,7 @@ class PermissionCheckScreen extends StatelessWidget {
   static Future<bool> _checkPermissions() async {
     List<Permission> requiredPermissions = [
       Permission.contacts,
-      //  Permission.audio,
+      Permission.bluetooth,
       Permission.locationWhenInUse,
       Permission.microphone,
       //  Permission.reminders,

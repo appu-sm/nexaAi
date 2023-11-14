@@ -13,12 +13,13 @@
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+            
         </intent>
     </queries>
     <application
         android:label="nexa"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"

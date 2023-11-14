@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class Notify {
   static info(String message) {
@@ -15,6 +16,7 @@ class Notify {
   }
 
   static error(String message) {
+    // _voiceOuput(message);
     return _toast(message, Colors.red);
   }
 
@@ -27,5 +29,15 @@ class Notify {
         backgroundColor: bgColor,
         textColor: Colors.white,
         fontSize: 16.0);
+  }
+
+  static _voiceOuput(String message) async {
+    FlutterTts flutterTts = FlutterTts();
+    await flutterTts.setLanguage("en-US");
+    await flutterTts.setSpeechRate(1.0);
+    await flutterTts.setVolume(1.0);
+    await flutterTts.setPitch(1.0);
+    await flutterTts.speak(message);
+    await flutterTts.stop();
   }
 }

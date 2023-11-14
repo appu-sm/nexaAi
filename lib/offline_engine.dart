@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:nexa/recognize_command.dart';
 import 'package:vosk_flutter/vosk_flutter.dart';
 
 class OfflineEngine extends StatefulWidget {
@@ -24,7 +25,9 @@ class _OfflineRecognitionState extends State<OfflineEngine> {
   SpeechService? _speechService;
   String? command;
   bool _recognitionStarted = false;
-  late StreamSubscription<String> _partialSubscription;
+//  late StreamSubscription<String> _partialSubscription;
+  late StreamSubscription _partialSubscription =
+      StreamController().stream.listen((event) {});
 
   @override
   void initState() {
@@ -52,6 +55,7 @@ class _OfflineRecognitionState extends State<OfflineEngine> {
               // Update the command variable with the partial result
               command = partialResult;
             });
+            RecognizeCommand().processCommand(command!);
           });
         }).catchError((e) {
           setState(() => _error = e.toString());
@@ -100,7 +104,7 @@ class _OfflineRecognitionState extends State<OfflineEngine> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text("Offline recogition"),
+            const Text("Offline recognition"),
             ElevatedButton(
               onPressed: () async {
                 if (_recognitionStarted) {

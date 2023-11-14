@@ -32,14 +32,13 @@ class PhoneActivity {
     List contacts = await getContacts();
     for (Contact contact in contacts) {
       List<String> contactName = [
-        contact.displayName,
-        contact.name.first,
-        contact.name.last,
-        contact.name.middle
+        contact.displayName.toLowerCase(),
+        contact.name.first.toLowerCase(),
+        contact.name.last.toLowerCase(),
+        contact.name.middle.toLowerCase()
       ];
-      List<String> searchResults = contactName
-          .where((item) => item.toLowerCase().contains(name.toLowerCase()))
-          .toList();
+      List<String> searchResults =
+          contactName.where((item) => item.contains(name)).toList();
       if (searchResults.isNotEmpty) {
         if (contact.phones.isNotEmpty) {
           return contact.phones.first.normalizedNumber;

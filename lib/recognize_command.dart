@@ -1,4 +1,5 @@
 import 'package:nexa/activity/app_activity.dart';
+import 'package:nexa/activity/music_activity.dart';
 import 'package:nexa/activity/phone_activity.dart';
 import 'package:nexa/activity/map_activity.dart';
 
@@ -19,12 +20,17 @@ class RecognizeCommand {
       MapActivity().navigateTo(location);
       // Open apps
     } else if (command.contains('launch') || command.contains('open')) {
+      command = command.replaceFirst('launch', 'open');
       String appName = _extractIntent('open', command)[0];
       AppActivity().launchApp(appName);
       // Volume control
-    } else if (command.startsWith('volume')) {
+    } else if (command.contains('volume')) {
+      String newVolume = _extractIntent('volume', command)[0];
+      MusicActivity().changeVolume(newVolume);
       // Music / video / radio
     } else if (command.startsWith('play')) {
+      String newVolume = _extractIntent('play', command)[0];
+      MusicActivity().changeVolume(newVolume);
       // Music control
     } else if (command.startsWith('track')) {
       // go to next / previous track
@@ -33,7 +39,7 @@ class RecognizeCommand {
 
   List<String> _extractIntent(String activity, String command,
       {bool multiple = false}) {
-    List<String> intents = [command.split(activity).last.trim()];
+    List<String> intents = [command.split(activity).last.trim().toLowerCase()];
     if (multiple) {
       intents = intents[0].split(' ');
     }
