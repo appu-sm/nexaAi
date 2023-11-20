@@ -6,7 +6,7 @@ void main() {
 }
 
 class Nexa extends StatelessWidget {
-  const Nexa({Key? key}) : super(key: key);
+  const Nexa({super.key});
 
   @override
   Widget build(BuildContext context) {

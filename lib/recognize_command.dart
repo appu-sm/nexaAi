@@ -5,6 +5,8 @@ import 'package:nexa/activity/map_activity.dart';
 
 class RecognizeCommand {
   void processCommand(String command) {
+    print("GIVEN COMMAND");
+    print(command);
 // Call a number / contact
     if (command.startsWith('call')) {
       String contactName = _extractIntent('call', command)[0];
@@ -18,23 +20,21 @@ class RecognizeCommand {
     } else if (command.startsWith('navigate to')) {
       String location = _extractIntent('navigate to', command)[0];
       MapActivity().navigateTo(location);
-      // Open apps
+// Open apps
     } else if (command.contains('launch') || command.contains('open')) {
       command = command.replaceFirst('launch', 'open');
       String appName = _extractIntent('open', command)[0];
       AppActivity().launchApp(appName);
-      // Volume control
+// Volume control
     } else if (command.contains('volume')) {
       String newVolume = _extractIntent('volume', command)[0];
       MusicActivity().changeVolume(newVolume);
-      // Music / video / radio
+// Music / video / radio
     } else if (command.startsWith('play')) {
       String newVolume = _extractIntent('play', command)[0];
       MusicActivity().changeVolume(newVolume);
-      // Music control
-    } else if (command.startsWith('track')) {
-      // go to next / previous track
-    }
+// Music control pause / resume / previous track / next track
+    } else if (command.startsWith('track')) {}
   }
 
   List<String> _extractIntent(String activity, String command,

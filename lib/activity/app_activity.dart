@@ -1,18 +1,22 @@
 import 'package:device_installed_apps/app_info.dart';
 import 'package:device_installed_apps/device_installed_apps.dart';
 import 'package:nexa/services/notification_service.dart';
+import 'package:nexa/services/search_service.dart';
 
 class AppActivity {
   void launchApp(String appName) async {
     Map installedApps = await getInstalledApps();
     if (installedApps.keys.contains(appName)) {
       try {
+// Exact match
         DeviceInstalledApps.launchApp(installedApps[appName].bundleId);
       } catch (e) {
+// Partial match
         checkPartialMatchApps(installedApps, appName);
       }
     } else {
-      Notify.error("$appName not found in installed apps list");
+// Misspelled name
+      checkPartialMatchApps(installedApps, appName);
     }
   }
 
@@ -26,17 +30,12 @@ class AppActivity {
   }
 
   void checkPartialMatchApps(Map appList, String app) {
-    List partialMatches =
-        appList.keys.where((key) => key.contains(app)).toList();
-    partialMatches.sort((a, b) => b.length.compareTo(a.length));
-    if (partialMatches.isNotEmpty) {
-      try {
-        DeviceInstalledApps.launchApp(appList[partialMatches[0]].bundleId);
-      } catch (e) {
-        Notify.error("$app not able to launch");
-      }
+    String? matchedApp =
+        SearchService().partialMatch(appList.keys.toList(), app);
+    if (matchedApp != null) {
+      DeviceInstalledApps.launchApp(appList[app].bundleId);
     } else {
-      Notify.error("$app not found");
+      Notify.error("$app not found in installed apps list");
     }
   }
 }

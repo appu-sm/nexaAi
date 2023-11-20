@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:flutter/services.dart';
 import 'package:map_launcher/map_launcher.dart';
 
 class MapActivity {
@@ -6,8 +9,8 @@ class MapActivity {
   void navigateTo(String location) async {
     final availableMaps = await MapLauncher.installedMaps;
     print(availableMaps);
-    availableMaps.first.showDirections(
-        destination: Coords(12.499622764352193, 78.56927158789178));
+    Coords? destination = await getCoordinates(location);
+    availableMaps.first.showDirections(destination: destination!);
     /*
     await availableMaps.first.showMarker(
       coords: Coords(37.759392, -122.5107336),
@@ -24,5 +27,17 @@ class MapActivity {
       );
     }
     */
+  }
+
+  Future<Coords?> getCoordinates(String location) async {
+    final String geoLocations =
+        await rootBundle.loadString('assets/geoLocation.json');
+    final geoLocation = jsonDecode(geoLocations);
+    var place = geoLocation.where((entry) => entry["name"] == location);
+    if (place.isNotEmpty) {
+      return Coords(place['lat'], place['lon']);
+    }
+    return null;
+    //return Coords(12.499622764352193, 78.56927158789178);
   }
 }

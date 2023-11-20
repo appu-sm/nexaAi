@@ -13,16 +13,13 @@ class PermissionCheckScreen extends StatelessWidget {
       Permission.bluetooth,
       Permission.locationWhenInUse,
       Permission.microphone,
-      //  Permission.reminders,
-      //  Permission.requestInstallPackages,
-      //  Permission.sms,
       Permission.phone,
+      Permission.systemAlertWindow,
+      //Permission.notification,
     ];
 
     Map<Permission, PermissionStatus> permissionStatus =
         await PermissionUtils.requestPermissions(requiredPermissions);
-    print("PERMISSION STTaus");
-    print(permissionStatus);
     var notGrantedPermissions = permissionStatus.entries
         .where((entry) => entry.value != PermissionStatus.granted);
     if (notGrantedPermissions.isNotEmpty) {
@@ -50,7 +47,6 @@ class PermissionCheckScreen extends StatelessWidget {
             } else if (snapshot.data == true) {
               return const NexaAi();
             } else {
-              print(snapshot);
               // Permissions are not granted, show a message or take appropriate action
               return ElevatedButton(
                 onPressed: () async {

@@ -1,30 +1,22 @@
-import 'package:flutter/material.dart';
-import 'package:nexa/recognize_command.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-class OnlineEngine extends StatefulWidget {
-  const OnlineEngine({super.key});
-
-  @override
-  OnlineRecognitionState createState() => OnlineRecognitionState();
-}
-
-class OnlineRecognitionState extends State<OnlineEngine> {
+class OnlineEngine {
+  final bool? offline;
   stt.SpeechToText speech = stt.SpeechToText();
-  String _command = "";
-  @override
-  void initState() {
-    super.initState();
-    _initializeSpeechRecognition();
+  String command = "";
+  Function(String) onCommandChanged;
+
+  OnlineEngine({this.offline, required this.onCommandChanged}) {
+    _initializeSpeechRecognition(); // Call the initialization in the constructor
   }
 
-  void _initializeSpeechRecognition() async {
+  Future<void> _initializeSpeechRecognition() async {
     bool available = await speech.initialize(
       onStatus: (status) {
-        print('Speech recognition status: $status');
-        print(status.runtimeType);
         if (status == 'done') {
-          RecognizeCommand().processCommand(_command);
+/* new commands are not recognized */
+          //     RecognizeCommand().processCommand(command);
+          //    command = '';
         }
       },
       onError: (error) {
@@ -34,46 +26,23 @@ class OnlineRecognitionState extends State<OnlineEngine> {
 
     if (available) {
       print('Speech recognition initialized');
+      // Start listening after initialization is complete
+      startListening();
     } else {
       print('Error initializing speech recognition');
     }
   }
 
-  void _startListening() {
-    speech.listen(
-      onResult: (result) {
-        setState(() {
-          // Process the recognized speech result
-          _command = result.recognizedWords;
-        });
-      },
-    ).onError((error, stackTrace) => setState(() {
-          // Processing error
-          _command = error.toString();
-        }));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('NexaAI'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text("Online recognition"),
-            ElevatedButton(
-              //onPressed: () => {RecognizeCommand().processCommand("open maps")},
-
-              onPressed: _startListening,
-              child: const Text('Start Listening'),
-            ),
-            Text(_command),
-          ],
-        ),
-      ),
-    );
+  void startListening() {
+    speech
+        .listen(
+          onDevice: offline,
+          onResult: (result) {
+            // Process the recognized speech result
+            command = result.recognizedWords;
+            onCommandChanged(command);
+          },
+        )
+        .onError((error, stackTrace) => command = error.toString());
   }
 }
