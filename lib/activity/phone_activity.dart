@@ -1,5 +1,6 @@
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:nexa/config.dart';
 import 'package:nexa/services/notification_service.dart';
 import 'package:call_log/call_log.dart';
 import 'package:nexa/services/search_service.dart';
@@ -16,10 +17,10 @@ class PhoneActivity {
     if (phoneNumber != '') {
       bool? madeCall = await FlutterPhoneDirectCaller.callNumber(phoneNumber);
       if (!madeCall!) {
-        Notify.warning("unable to make call");
+        Notify.warning(Config.dialog['call_error']!);
       }
     } else {
-      Notify.error("Sorry contact not found");
+      Notify.error(Config.dialog['contact_error']!);
     }
   }
 
@@ -96,9 +97,10 @@ class PhoneActivity {
       }
       newContact.phones = [Phone(number)];
       await newContact.insert();
-      Notify.success("Contact saved as ${name[0]}");
+      Notify.success(
+          Config.dialog['contact_save']!.replaceAll("{{value}}", name[0]));
     } else {
-      Notify.error("Sorry unable to retrieve the last incoming call");
+      Notify.error(Config.dialog['retrive_error']!);
     }
   }
 

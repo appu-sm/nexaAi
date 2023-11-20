@@ -1,3 +1,5 @@
+import 'package:nexa/config.dart';
+import 'package:nexa/services/notification_service.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class OnlineEngine {
@@ -7,7 +9,7 @@ class OnlineEngine {
   Function(String) onCommandChanged;
 
   OnlineEngine({this.offline, required this.onCommandChanged}) {
-    _initializeSpeechRecognition(); // Call the initialization in the constructor
+    _initializeSpeechRecognition();
   }
 
   Future<void> _initializeSpeechRecognition() async {
@@ -20,16 +22,17 @@ class OnlineEngine {
         }
       },
       onError: (error) {
-        print('Speech recognition error: $error');
+        Notify.error(Config.dialog['speech_error']!
+            .replaceAll("{{value}}", error.toString()));
       },
     );
 
     if (available) {
-      print('Speech recognition initialized');
-      // Start listening after initialization is complete
+// Start listening after initialization is complete
       startListening();
     } else {
-      print('Error initializing speech recognition');
+      Notify.error(
+          Config.dialog['speech_init_error']!.replaceAll("{{value}}", ""));
     }
   }
 

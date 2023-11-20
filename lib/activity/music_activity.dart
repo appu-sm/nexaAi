@@ -1,4 +1,5 @@
 import 'package:nexa/channel/music_channel.dart';
+import 'package:nexa/config.dart';
 import 'package:nexa/services/notification_service.dart';
 import 'package:volume_regulator/volume_regulator.dart';
 
@@ -16,7 +17,8 @@ class MusicActivity {
       }
       VolumeRegulator.setVolume(newVolume);
     } catch (e) {
-      Notify.error("Sorry unable to change volume : $e");
+      Notify.error(
+          Config.dialog["volume_error"]!.replaceAll("{{value}}", e.toString()));
     }
   }
 

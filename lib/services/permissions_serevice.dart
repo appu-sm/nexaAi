@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:nexa/nexaai.dart';
+import 'package:nexa/config.dart';
+import 'package:nexa/nexa_ai.dart';
+import 'package:nexa/services/notification_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class PermissionCheckScreen extends StatelessWidget {
@@ -23,9 +25,8 @@ class PermissionCheckScreen extends StatelessWidget {
     var notGrantedPermissions = permissionStatus.entries
         .where((entry) => entry.value != PermissionStatus.granted);
     if (notGrantedPermissions.isNotEmpty) {
-      print(
-          "the below permissions are not granted, which are crusial for the application to work properly");
-      print(notGrantedPermissions);
+      Notify.warning(Config.dialog["no_permission"]!
+          .replaceAll("{{value}}", notGrantedPermissions.join(", ")));
     }
 
     return await PermissionUtils.arePermissionsGranted(requiredPermissions);
@@ -39,22 +40,21 @@ class PermissionCheckScreen extends StatelessWidget {
           future: _permissionCheckFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              // While waiting for the permission check, you might show a loading indicator.
+// While waiting for the permission check, show a loading indicator.
               return const CircularProgressIndicator();
             } else if (snapshot.hasError) {
-              // Handle error case
+// Handle error case
               return Text('Error: ${snapshot.error}');
             } else if (snapshot.data == true) {
               return const NexaAi();
             } else {
-              // Permissions are not granted, show a message or take appropriate action
+// Permissions are not granted, show a message or take appropriate action
               return ElevatedButton(
                 onPressed: () async {
                   // Open app settings
                   await PermissionUtils.openAppSettings();
                 },
-                child: const Text(
-                    'Open settings and provide the necessary permissions'),
+                child: Text(Config.dialog["permission_text"]!),
               );
             }
           },

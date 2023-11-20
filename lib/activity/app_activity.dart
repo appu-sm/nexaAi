@@ -1,5 +1,6 @@
 import 'package:device_installed_apps/app_info.dart';
 import 'package:device_installed_apps/device_installed_apps.dart';
+import 'package:nexa/config.dart';
 import 'package:nexa/services/notification_service.dart';
 import 'package:nexa/services/search_service.dart';
 
@@ -35,7 +36,7 @@ class AppActivity {
     if (matchedApp != null) {
       DeviceInstalledApps.launchApp(appList[app].bundleId);
     } else {
-      Notify.error("$app not found in installed apps list");
+      Notify.error(Config.dialog['app_error']!.replaceAll("{{value}}", app));
     }
   }
 }

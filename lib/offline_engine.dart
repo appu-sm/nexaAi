@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'package:nexa/config.dart';
+import 'package:nexa/services/notification_service.dart';
 import 'package:vosk_flutter/vosk_flutter.dart';
 
 class OfflineEngine {
   Function(String) onCommandChanged;
-  static const modelAsset = 'assets/models/vosk-model-small-en-in-0.4.zip';
-  static const sampleRate = 16000;
+  static const modelAsset = Config.offlineModel;
+  static const sampleRate = Config.sampleRate;
 
   final VoskFlutterPlugin _vosk = VoskFlutterPlugin.instance();
   final ModelLoader _modelLoader = ModelLoader();
@@ -18,17 +20,18 @@ class OfflineEngine {
   bool _recognitionStarted = false;
 
   OfflineEngine({required this.onCommandChanged}) {
-    initializeRecognition(); // Call the initialization in the constructor
+    initializeRecognition();
   }
 
   Future<void> initializeRecognition() async {
     if (_speechService != null) {
-      // SpeechService instance already exists, no need to initialize again
+// SpeechService instance / model already exists, no need to initialize again
       return;
     }
     if (await _modelLoader.isModelAlreadyLoaded(modelAsset)) {
       return;
     }
+
     await _modelLoader.loadFromAssets(modelAsset).then((modelPath) async {
       _model = await _vosk.createModel(modelPath);
       _recognizer =
@@ -50,16 +53,20 @@ class OfflineEngine {
           Map<String, dynamic> jsonMap = json.decode(event);
           String result = jsonMap['text'];
           onCommandChanged(result);
-        });
-        // Schedule stopping the service after 5 seconds
-        Future.delayed(const Duration(seconds: 5), () {
+        }).onError((error) => Notify.error(Config.dialog['speech_error']!
+            .replaceAll("{{value}}", error.toString())));
+
+// Schedule stopping the service after ${Config.listenDuration} seconds
+        Future.delayed(const Duration(seconds: Config.listenDuration), () {
           if (_recognitionStarted) {
             _partialSubscription.cancel();
             _speechService?.stop();
             _speechService?.dispose();
             _recognitionStarted = false;
           }
-        });
+        }).onError((error, stackTrace) => Notify.error(Config
+            .dialog['speech_init_error']!
+            .replaceAll("{{value}}", error.toString())));
       }
     });
   }

@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:map_launcher/map_launcher.dart';
+import 'package:nexa/config.dart';
 
 class MapActivity {
+  String offlineGeoLocation = Config.geoLocation;
   void searchPlace(String name) async {}
 
   void navigateTo(String location) async {
@@ -30,8 +32,7 @@ class MapActivity {
   }
 
   Future<Coords?> getCoordinates(String location) async {
-    final String geoLocations =
-        await rootBundle.loadString('assets/geoLocation.json');
+    final String geoLocations = await rootBundle.loadString(offlineGeoLocation);
     final geoLocation = jsonDecode(geoLocations);
     var place = geoLocation.where((entry) => entry["name"] == location);
     if (place.isNotEmpty) {

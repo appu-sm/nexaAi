@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:nexa/config.dart';
 import 'package:nexa/offline_engine.dart';
 import 'package:nexa/online_engine.dart';
 import 'package:nexa/recognize_command.dart';
@@ -20,10 +21,10 @@ class NexaAiState extends State<NexaAi> {
   @override
   void initState() {
     super.initState();
-    // Initialize the connectivity status when the widget is created
+// Initialize the connectivity status when the widget is created
     _checkConnectivity();
     _initializeAlwaysActive();
-    // Listen for changes in the connectivity status
+// Listen for changes in the connectivity status
     Connectivity().onConnectivityChanged.listen((result) {
       setState(() {
         _connectivityResult = result;
@@ -50,7 +51,7 @@ class NexaAiState extends State<NexaAi> {
     return Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.black87,
-          title: const Center(child: Text('NexaAI')),
+          title: const Center(child: Text(Config.appName)),
         ),
         backgroundColor: Colors.black87,
         body: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
@@ -63,10 +64,12 @@ class NexaAiState extends State<NexaAi> {
                   child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        const Text("Nexa status"),
+                        Text(Config.dialog['status']!),
                         Text(_connectivityResult != ConnectivityResult.none
-                            ? 'Online'
-                            : 'Offline'),
+                            ? Config.dialog['online']![0].toUpperCase() +
+                                Config.dialog['online']!.substring(1)
+                            : Config.dialog['offline']![0].toUpperCase() +
+                                Config.dialog['online']!.substring(1)),
                       ]))),
           Card(
               elevation: 2,
@@ -75,7 +78,8 @@ class NexaAiState extends State<NexaAi> {
               child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    const Text("Assistant always active"),
+                    Text(Config.dialog['always_active']!),
+// Floating icon switch
                     Switch(
                         value: alwaysActive,
                         onChanged: (value) => {
@@ -83,9 +87,11 @@ class NexaAiState extends State<NexaAi> {
                                 alwaysActive = value;
                               }),
                               value == true
-                                  ? BackgroundService.startService(false,
+                                  ? BackgroundService.startService(
+                                      _connectivityResult !=
+                                          ConnectivityResult.none,
                                       (String cmd) {
-                                      // Handle the updated command here
+// Handle the updated command here
                                       setState(() {
                                         command = cmd;
                                       });
@@ -100,21 +106,20 @@ class NexaAiState extends State<NexaAi> {
                         activeTrackColor: Colors.greenAccent.shade200)
                   ])),
           const SizedBox(height: 20),
+// Mic Button
           Ink(
               decoration: const ShapeDecoration(
-                color: Colors.white, // Set your desired background color
+                color: Colors.white,
                 shape: CircleBorder(),
               ),
               child: IconButton(
-                  icon: const Icon(Icons.mic,
-                      color: Colors.black), // Set icon color
+                  icon: const Icon(Icons.mic, color: Colors.black),
                   onPressed: () async {
 //                    RecognizeCommand().processCommand("launch ditto");
-
+// Online engine
                     if (_connectivityResult != ConnectivityResult.none) {
                       OnlineEngine onlineEngine = OnlineEngine(
                         onCommandChanged: (String cmd) {
-                          // Handle the updated command here
                           setState(() {
                             command = cmd;
                           });
@@ -123,6 +128,7 @@ class NexaAiState extends State<NexaAi> {
                       );
                       onlineEngine.startListening();
                     } else {
+// Offline engine
                       final OfflineEngine recognitionService =
                           OfflineEngine(onCommandChanged: (String cmd) {
                         setState(() {
