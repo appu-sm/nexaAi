@@ -1,4 +1,4 @@
-import 'package:nexa/channel/music_channel.dart';
+//import 'package:nexa/channel/music_channel.dart';
 import 'package:nexa/config.dart';
 import 'package:nexa/services/notification_service.dart';
 import 'package:volume_regulator/volume_regulator.dart';
@@ -23,6 +23,6 @@ class MusicActivity {
   }
 
   void launchMusic() {
-    MusicService.playMusicInDefaultApp('');
+//    MusicService.playMusicInDefaultApp('');
   }
 }

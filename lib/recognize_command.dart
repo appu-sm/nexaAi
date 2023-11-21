@@ -33,7 +33,10 @@ class RecognizeCommand {
       String newVolume = _extractIntent('play', command)[0];
       MusicActivity().changeVolume(newVolume);
 // Music control pause / resume / previous track / next track
-    } else if (command.endsWith(option[7])) {}
+    } else if (command.endsWith(option[7])) {
+    } else if (command.endsWith(option[8])) {
+      // resume volume
+    }
   }
 
   List<String> _extractIntent(String activity, String command,

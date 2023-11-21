@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:nexa/config.dart';
@@ -5,6 +6,7 @@ import 'package:nexa/offline_engine.dart';
 import 'package:nexa/online_engine.dart';
 import 'package:nexa/recognize_command.dart';
 import 'package:nexa/services/background_service.dart';
+import 'package:nexa/services/notification_service.dart';
 
 class NexaAi extends StatefulWidget {
   const NexaAi({super.key});
@@ -14,6 +16,7 @@ class NexaAi extends StatefulWidget {
 }
 
 class NexaAiState extends State<NexaAi> {
+  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
   ConnectivityResult _connectivityResult = ConnectivityResult.none;
   String command = "";
   bool alwaysActive = false;
@@ -25,11 +28,18 @@ class NexaAiState extends State<NexaAi> {
     _checkConnectivity();
     _initializeAlwaysActive();
 // Listen for changes in the connectivity status
-    Connectivity().onConnectivityChanged.listen((result) {
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((result) {
       setState(() {
         _connectivityResult = result;
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
   }
 
   Future<void> _initializeAlwaysActive() async {
@@ -69,7 +79,7 @@ class NexaAiState extends State<NexaAi> {
                             ? Config.dialog['online']![0].toUpperCase() +
                                 Config.dialog['online']!.substring(1)
                             : Config.dialog['offline']![0].toUpperCase() +
-                                Config.dialog['online']!.substring(1)),
+                                Config.dialog['offline']!.substring(1)),
                       ]))),
           Card(
               elevation: 2,
@@ -95,6 +105,7 @@ class NexaAiState extends State<NexaAi> {
                                       setState(() {
                                         command = cmd;
                                       });
+                                      Notify.info(command);
                                       RecognizeCommand()
                                           .processCommand(command);
                                     })

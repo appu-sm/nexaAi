@@ -8,6 +8,7 @@ class BackgroundService {
       bool online, Function(String) onCommandChanged) async {
     await DashBubble.instance.startBubble(
         bubbleOptions: BubbleOptions(
+            keepAliveWhenAppExit: true,
             bubbleIcon:
                 online ? Config.dialog['online'] : Config.dialog['offline']),
         onTapDown: (x, y) async {

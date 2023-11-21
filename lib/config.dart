@@ -17,7 +17,8 @@ class Config {
     "open",
     "volume",
     "play",
-    "track"
+    "track",
+    "resume"
   ];
   static const Map<String, String> dialog = {
     "status": "Nexa status",
