@@ -23,6 +23,7 @@ dependencies:
   dash_bubble: ^2.0.0
   fuzzywuzzy: ^1.1.6
   permission_handler: ^10.4.5
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:

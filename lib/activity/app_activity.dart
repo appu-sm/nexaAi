@@ -34,9 +34,10 @@ class AppActivity {
     String? matchedApp =
         SearchService().partialMatch(appList.keys.toList(), app);
     if (matchedApp != null) {
-      DeviceInstalledApps.launchApp(appList[app].bundleId);
+      DeviceInstalledApps.launchApp(appList[matchedApp].bundleId);
     } else {
-      Notify.error(Config.dialog['app_error']!.replaceAll("{{value}}", app));
+      Notify.error(Config.dialog['app_error']!
+          .replaceAll("{{value}}", matchedApp ?? "The app"));
     }
   }
 }

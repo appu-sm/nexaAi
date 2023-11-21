@@ -16,14 +16,14 @@ class Notify {
   }
 
   static error(String message) {
-    // _voiceOuput(message);
+    //_voiceOuput(message);
     return _toast(message, Colors.red);
   }
 
   static _toast(String message, Color bgColor) {
     return Fluttertoast.showToast(
         msg: message,
-        toastLength: Toast.LENGTH_SHORT,
+        toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.CENTER,
         timeInSecForIosWeb: 1,
         backgroundColor: bgColor,
@@ -32,12 +32,16 @@ class Notify {
   }
 
   static _voiceOuput(String message) async {
-    FlutterTts flutterTts = FlutterTts();
-    await flutterTts.setLanguage("en-US");
-    await flutterTts.setSpeechRate(1.0);
-    await flutterTts.setVolume(1.0);
-    await flutterTts.setPitch(1.0);
-    await flutterTts.speak(message);
-    await flutterTts.stop();
+    try {
+      FlutterTts flutterTts = FlutterTts();
+      await flutterTts.setLanguage("en-US");
+      await flutterTts.setSpeechRate(1.0);
+      await flutterTts.setVolume(1.0);
+      await flutterTts.setPitch(1.0);
+      await flutterTts.speak(message);
+      await flutterTts.stop();
+    } catch (e) {
+      print(e);
+    }
   }
 }

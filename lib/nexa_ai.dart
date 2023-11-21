@@ -6,6 +6,7 @@ import 'package:nexa/offline_engine.dart';
 import 'package:nexa/online_engine.dart';
 import 'package:nexa/recognize_command.dart';
 import 'package:nexa/services/background_service.dart';
+import 'package:nexa/services/background_service_new.dart';
 import 'package:nexa/services/notification_service.dart';
 
 class NexaAi extends StatefulWidget {
@@ -20,6 +21,7 @@ class NexaAiState extends State<NexaAi> {
   ConnectivityResult _connectivityResult = ConnectivityResult.none;
   String command = "";
   bool alwaysActive = false;
+  bool unifiedEngine = true;
 
   @override
   void initState() {
@@ -43,7 +45,7 @@ class NexaAiState extends State<NexaAi> {
   }
 
   Future<void> _initializeAlwaysActive() async {
-    bool status = await BackgroundService.status();
+    bool status = await BackgroundServiceNew.status();
     setState(() {
       alwaysActive = status;
     });
@@ -65,6 +67,7 @@ class NexaAiState extends State<NexaAi> {
         ),
         backgroundColor: Colors.black87,
         body: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+// Status card
           Card(
               elevation: 2,
               color: Colors.white70,
@@ -75,12 +78,58 @@ class NexaAiState extends State<NexaAi> {
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         Text(Config.dialog['status']!),
-                        Text(_connectivityResult != ConnectivityResult.none
-                            ? Config.dialog['online']![0].toUpperCase() +
-                                Config.dialog['online']!.substring(1)
-                            : Config.dialog['offline']![0].toUpperCase() +
-                                Config.dialog['offline']!.substring(1)),
+                        Text(
+                            _connectivityResult != ConnectivityResult.none
+                                ? Config.dialog['online']![0].toUpperCase() +
+                                    Config.dialog['online']!.substring(1)
+                                : Config.dialog['offline']![0].toUpperCase() +
+                                    Config.dialog['offline']!.substring(1),
+                            style: TextStyle(
+                                color: _connectivityResult !=
+                                        ConnectivityResult.none
+                                    ? Colors.green
+                                    : Colors.red)),
                       ]))),
+// Engine status
+          Card(
+              elevation: 2,
+              color: Colors.white70,
+              margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 15),
+              child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Text(Config.dialog['engine']!),
+                        Text(
+                            unifiedEngine
+                                ? Config.dialog['unified']!
+                                : Config.dialog['seperate']!,
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color:
+                                    unifiedEngine ? Colors.blue : Colors.cyan)),
+                      ]))),
+// Engine selection
+          Card(
+              elevation: 2,
+              color: Colors.white70,
+              margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 15),
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Text(Config.dialog['unified_engine']!),
+                    Switch(
+                        value: unifiedEngine,
+                        onChanged: (value) => setState(() {
+                              unifiedEngine = value;
+                            }),
+                        activeColor: Colors.black87,
+                        inactiveThumbColor: Colors.black87,
+                        inactiveTrackColor: Colors.cyan.shade300,
+                        activeTrackColor: Colors.blue.shade200)
+                  ])),
+// Floating icon switch
           Card(
               elevation: 2,
               color: Colors.white70,
@@ -89,7 +138,6 @@ class NexaAiState extends State<NexaAi> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     Text(Config.dialog['always_active']!),
-// Floating icon switch
                     Switch(
                         value: alwaysActive,
                         onChanged: (value) => {
@@ -97,10 +145,10 @@ class NexaAiState extends State<NexaAi> {
                                 alwaysActive = value;
                               }),
                               value == true
-                                  ? BackgroundService.startService(
+                                  ? BackgroundServiceNew.startService(
                                       _connectivityResult !=
                                           ConnectivityResult.none,
-                                      (String cmd) {
+                                      unifiedEngine, (String cmd) {
 // Handle the updated command here
                                       setState(() {
                                         command = cmd;
@@ -109,7 +157,7 @@ class NexaAiState extends State<NexaAi> {
                                       RecognizeCommand()
                                           .processCommand(command);
                                     })
-                                  : BackgroundService.stopService()
+                                  : BackgroundServiceNew.stopService()
                             },
                         activeColor: Colors.black87,
                         inactiveThumbColor: Colors.black87,
@@ -126,8 +174,9 @@ class NexaAiState extends State<NexaAi> {
               child: IconButton(
                   icon: const Icon(Icons.mic, color: Colors.black),
                   onPressed: () async {
-//                    RecognizeCommand().processCommand("launch ditto");
+//                    RecognizeCommand().processCommand("navigate to vellore");
 // Online engine
+
                     if (_connectivityResult != ConnectivityResult.none) {
                       OnlineEngine onlineEngine = OnlineEngine(
                         onCommandChanged: (String cmd) {
@@ -147,15 +196,23 @@ class NexaAiState extends State<NexaAi> {
                         });
                         RecognizeCommand().processCommand(command);
                       });
-//                      await recognitionService.initializeRecognition();
                       await recognitionService.startStopRecognition();
                     }
                   })),
-          const SizedBox(height: 10),
-          Text(
-            command,
-            style: const TextStyle(color: Colors.white),
-          )
+          const SizedBox(height: 200),
+// Command
+          Visibility(
+              visible: command != "",
+              child: Column(children: [
+                const Text(
+                  "Recognized command :",
+                  style: TextStyle(color: Colors.white),
+                ),
+                Text(
+                  command,
+                  style: const TextStyle(color: Colors.white),
+                )
+              ])),
         ]));
   }
 }

@@ -10,15 +10,16 @@ class Config {
 //map activity
   static const String geoLocation = "assets/geoLocation.json";
   static List commands = [
-    "call",
-    "save this call",
-    "navigate to",
-    "launch",
-    "open",
-    "volume",
-    "play",
-    "track",
-    "resume"
+    "call", //  0
+    "save this call", //  1
+    "navigate to", //  2
+    "launch", //  3
+    "open", //  4
+    "volume", //  5
+    "mute", //  6
+    "unmute", //  7
+    "play", //  8
+    "track", //  9
   ];
   static const Map<String, String> dialog = {
     "status": "Nexa status",
@@ -35,6 +36,12 @@ class Config {
     "retrive_error": "Sorry unable to retrieve the last incoming call",
     "no_permission":
         "Following permissions are not granted, which are crusial for the application to work properly {{value}}",
-    "permission_text": "Open settings and provide the necessary permissions"
+    "permission_text": "Open settings and provide the necessary permissions",
+    "unified_engine": "Use unified engine",
+    "engine": "Currently active engine",
+    "unified": "Unified",
+    "seperate": "Seperate",
+    "no_map": "No maps installed in the device",
+    "map_error": "Unable to navigate to {{value}}"
   };
 }
