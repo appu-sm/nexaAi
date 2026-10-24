@@ -719,6 +719,18 @@ checklist.
 
 ### Milestone 1 --- App shell and configuration
 
+**Implementation baseline (2026-10-23):** The initialized project uses package
+`com.nexaai.assistant`, min API 28, compile/target API 35, JDK 17, AGP 8.9.2,
+Gradle 8.11.1, Kotlin 2.1.20 and Compose BOM 2025.04.01. Milestone 1 implements
+the six-screen shell and versioned DataStore configuration. Hardware-dependent
+settings remain read-only/unavailable until their milestone is implemented;
+they must never become cosmetic toggles. TTS defaults **off**, unlike the
+conceptual schema example, until an actual offline voice is verified. Name,
+assistant preference, command enablement and aliases are editable. No command
+execution or recording is implied by catalogue enablement. Host build/test
+evidence and outstanding target checks are maintained in `docs/TEST_PLAN.md`
+and `docs/DEVICE_COMPATIBILITY.md`; device checks were skipped by user request.
+
 -   Build Compose navigation and the Home, Commands, Settings, Models,
     Diagnostics, and Help screens.
 -   Implement DataStore-backed settings and migrations.
@@ -729,6 +741,17 @@ checklist.
 **Deliverables:** functioning app shell, persisted settings, UI tests.
 
 ### Milestone 2 --- Command engine and safe controls
+
+**Implementation decisions (2026-10-23):** The engine reads the existing schema-1
+catalogue at preparation and execution. Home offers development input with
+single-use interpretation, execute, and cancel controls, not speech capture.
+Volume uses only `STREAM_MUSIC` with Android-state verification, not proof of
+OEM audible output. Installed launcher apps are selected into a private versioned
+DataStore allowlist, excluded from portable imports/exports. Media uses session
+transport controls after optional notification-listener access, refuses multiple
+sessions, and reports requests rather than unverified playback changes. Radio
+and listening remain unsupported. No tuner band is assumed. Host verification
+and outstanding target checks are maintained in the test/device reports.
 
 -   Implement domain command types, parser, validator, dispatcher, and
     typed results.

@@ -1,0 +1,5 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "\"$ANDROID_HOME/build-tools/35.0.0/aapt\"": true
+    }
+}
