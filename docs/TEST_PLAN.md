@@ -120,8 +120,11 @@ Full `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain`
 passes: 30 tests, zero failed/errored/skipped, lint zero errors and 10 existing
 warnings. The debug APK was rebuilt. Native ICU is host reproduction evidence,
 not Android 14 or K2501 device verification; no device crash log was captured.
-Retest `help` -> Interpret -> Execute on the affected device without resetting
-configuration. Unsupported or rejected commands must still leave Execute disabled.
+On 2026-10-24, the user confirmed the app was working fine and all reported issues
+were fixed. Record the reported regression as resolved by user retest in the
+previously reported Android 14 environment. No detailed command matrix, device
+model/build or logs were supplied; this does not mark the K2501 acceptance matrix
+as passed. Unsupported or rejected commands must still leave Execute disabled.
 
 ## Manual Milestone 2 acceptance (not yet run)
 

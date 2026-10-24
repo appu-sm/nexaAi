@@ -79,9 +79,12 @@ source expression compiles under native ICU with status 0. Host tests/build/lint
 pass after the fix (30 tests, zero lint errors, 10 existing warnings).
 
 This reproduces the regex defect on the host, not the full reported device crash.
-No Android 14 device log or post-fix on-device result was collected. The rebuilt
-APK requires a Help interpretation/execution check on the affected device. No
-permission grant is required for Help. Existing target hardware gates remain open.
+On 2026-10-24, the user confirmed the app was verified, working fine and all
+reported issues were fixed after the correction. This records a successful
+user-reported retest on the previously reported Android 14 environment, not an
+independently observed device test. No device log, model/build identifier or
+per-control test results were supplied. No permission grant is required for Help.
+Existing K2501 hardware acceptance gates remain open.
 
 | Control | Implemented behavior | Still requires target evidence |
 | --- | --- | --- |

@@ -5,7 +5,9 @@
 - Fix Android ICU-incompatible placeholder regexes that can crash Interpret;
     parser and configuration validation share an explicitly escaped expression.
     Reproduce old-pattern failure with native ICU and verify the corrected source
-    pattern; 30 host tests, debug build and lint pass. Device retest remains pending.
+    pattern; 30 host tests, debug build and lint pass. On 2026-10-24, the user
+    confirmed the app works and all reported issues are fixed; detailed target
+    hardware acceptance remains unverified.
 
 - Milestone 2: typed deterministic parsing, central validation/dispatch, single-use
     preparations, live configuration revalidation and engine-level cancellation.
