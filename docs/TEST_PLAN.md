@@ -101,6 +101,28 @@ Fake volume tests validate mapping semantics, not actual audible output. The fak
 87.5-108/0.1 MHz band is test data only, not the K2501 tuner specification. No
 head unit/emulator/instrumented hardware test was performed.
 
+## Interpret crash correction (2026-10-24)
+
+An Android 14 user reported Interpret crashing and Execute never becoming
+enabled. Both placeholder patterns used an unescaped literal closing brace.
+The host JVM accepted these patterns, so Robolectric did not reproduce the
+Android regex failure. Native ICU 74 rejects both old patterns with status
+66305 and accepts the corrected shared `\{[^{}]+\}` pattern with status 0.
+The corrected expression was extracted from the actual Kotlin source for the
+native check. Parsing and configuration validation now use that same expression.
+
+`CommandParserTest.placeholderPatternEscapesBracesForAndroidIcu` locks the escaped
+pattern contract and tests valid/empty/nested placeholders plus default validation
+and Help interpretation. Existing Compose tests confirm successful interpretation
+enables Execute, cancellation disables it, and unsupported FM cannot execute.
+
+Full `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain`
+passes: 30 tests, zero failed/errored/skipped, lint zero errors and 10 existing
+warnings. The debug APK was rebuilt. Native ICU is host reproduction evidence,
+not Android 14 or K2501 device verification; no device crash log was captured.
+Retest `help` -> Interpret -> Execute on the affected device without resetting
+configuration. Unsupported or rejected commands must still leave Execute disabled.
+
 ## Manual Milestone 2 acceptance (not yet run)
 
 1. Install on the stationary K2501; record API/build/ABI/memory/storage evidence.

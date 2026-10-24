@@ -69,6 +69,8 @@ data class Configuration(
 
 fun normalizeAlias(value: String): String = value.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
 
+internal val commandPlaceholderPattern = Regex("\\{[^{}]+\\}")
+
 object ConfigurationValidator {
     fun validate(config: Configuration) {
         require(config.schemaVersion == 1) { "Unsupported configuration schema" }
@@ -88,7 +90,7 @@ object ConfigurationValidator {
                 require(alias == normalizeAlias(alias) && alias.length in 1..100) { "Aliases must be normalized and 1-100 characters" }
                 require(alias.matches(Regex("[\\p{L}\\p{N} '{}-]+"))) { "Aliases contain unsupported characters" }
                 val spec = CommandCatalogue.spec(command.id)
-                val placeholders = Regex("\\{[^}]*}").findAll(alias).map { it.value }.toList()
+                val placeholders = commandPlaceholderPattern.findAll(alias).map { it.value }.toList()
                 require(placeholders == listOfNotNull(spec.placeholder)) { "Keep the required placeholder: ${spec.placeholder ?: "none"}" }
                 require(alias.count { it == '{' } == placeholders.size && alias.count { it == '}' } == placeholders.size) { "Malformed placeholder" }
                 if (spec.placeholder != null) require(spec.placeholder in alias.split(" ")) { "Placeholder must be a separate word" }

@@ -2,6 +2,7 @@ package com.nexaai.assistant.domain
 
 import com.nexaai.assistant.data.CommandId
 import com.nexaai.assistant.data.Configuration
+import com.nexaai.assistant.data.commandPlaceholderPattern
 import com.nexaai.assistant.data.normalizeAlias
 import java.math.BigDecimal
 
@@ -36,7 +37,7 @@ class RuleBasedCommandParser {
         if (text.length !in 1..300) return invalid("Command must be 1-300 characters")
         val matches = configuration.commands.flatMap { definition ->
             definition.aliases.mapNotNull { alias ->
-                val parts = Regex("\\{[^}]+}").find(alias)
+                val parts = commandPlaceholderPattern.find(alias)
                 val pattern = if (parts == null) Regex(Regex.escape(alias)) else Regex(
                     Regex.escape(alias.substring(0, parts.range.first)) + "(.+)" +
                         Regex.escape(alias.substring(parts.range.last + 1)))

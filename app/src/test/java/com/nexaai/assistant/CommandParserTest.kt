@@ -10,6 +10,16 @@ class CommandParserTest {
     private fun parse(text: String, config: Configuration = Configuration(), apps: List<AllowedApp> = emptyList()) =
         parser.parse(text, config, apps)
 
+    @Test fun placeholderPatternEscapesBracesForAndroidIcu() {
+        assertEquals("\\{[^{}]+\\}", commandPlaceholderPattern.pattern)
+        assertEquals(listOf("{percent}", "{app}", "{frequency}"),
+            commandPlaceholderPattern.findAll("{percent} {app} {frequency}").map { it.value }.toList())
+        assertFalse(commandPlaceholderPattern.matches("{}"))
+        assertFalse(commandPlaceholderPattern.matches("{{app}}"))
+        ConfigurationValidator.validate(Configuration())
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.HELP)), parse("help"))
+    }
+
     @Test fun exactAliasesAndNormalization() {
         listOf("volume up", "increase volume", " LOUDER  ").forEach {
             assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.VOLUME_UP)), parse(it))

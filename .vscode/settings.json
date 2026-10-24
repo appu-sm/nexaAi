@@ -1,5 +1,9 @@
 {
     "chat.tools.terminal.autoApprove": {
-        "\"$ANDROID_HOME/build-tools/35.0.0/aapt\"": true
+        "\"$ANDROID_HOME/build-tools/35.0.0/aapt\"": true,
+        "/^sed -n 's/\\^internal val commandPlaceholderPattern = Regex\\(\\\\\\(\\.\\*\\\\\\)\\)\\$/\\\\1/p' app/src/main/java/com/nexaai/assistant/data/Configuration\\.kt \\| python3 -c '\nimport ctypes\nimport ctypes\\.util\nimport json\nimport re\nimport sys\npattern = json\\.loads\\(sys\\.stdin\\.read\\(\\)\\)\nname = ctypes\\.util\\.find_library\\(\"icui18n\"\\)\nif not name:\n    raise SystemExit\\(\"Native ICU unavailable\"\\)\nlibrary = ctypes\\.CDLL\\(name\\)\nversion = \"_\" \\+ re\\.search\\(r\"\\\\\\.so\\\\\\.\\(\\\\d\\+\\)\", name\\)\\.group\\(1\\)\ncompile_pattern = getattr\\(library, \"uregex_openC\" \\+ version\\)\ncompile_pattern\\.restype = ctypes\\.c_void_p\ncompile_pattern\\.argtypes = \\[ctypes\\.c_char_p, ctypes\\.c_uint32, ctypes\\.c_void_p, ctypes\\.POINTER\\(ctypes\\.c_int\\)\\]\nclose_pattern = getattr\\(library, \"uregex_close\" \\+ version\\)\nclose_pattern\\.argtypes = \\[ctypes\\.c_void_p\\]\nfor expression, should_pass in \\[\\(r\"\\\\\\{\\[\\^\\}\\]\\+\\}\", False\\), \\(r\"\\\\\\{\\[\\^\\}\\]\\*\\}\", False\\), \\(pattern, True\\)\\]:\n    status = ctypes\\.c_int\\(0\\)\n    compiled = compile_pattern\\(expression\\.encode\\(\"ascii\"\\), 0, None, ctypes\\.byref\\(status\\)\\)\n    print\\(expression, \"ICU status:\", status\\.value\\)\n    if compiled:\n        close_pattern\\(compiled\\)\n    assert \\(status\\.value <= 0\\) == should_pass\nprint\\(\"Native ICU reproduction and corrected source pattern verified\"\\)\n' && grep -h '<testsuite ' app/build/test-results/testDebugUnitTest/TEST-\\*\\.xml && grep -c 'severity=\"Warning\"' app/build/reports/lint-results-debug\\.xml$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }

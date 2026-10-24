@@ -69,6 +69,20 @@ ABI in the APK is not proof of compatibility with the target firmware.
 	queries, not `QUERY_ALL_PACKAGES`. The listener service is system-protected by
 	`BIND_NOTIFICATION_LISTENER_SERVICE`, not a grant the APK can give itself.
 
+## Android 14 Interpret report (2026-10-24)
+
+A user reported a crash on Interpret with Execute remaining disabled. Inspection
+identified Android-incompatible placeholder patterns in parsing and validation:
+their unescaped closing brace compiles on the host JVM but fails native ICU 74
+with status 66305. Both now share explicitly escaped `\{[^{}]+\}`; that exact
+source expression compiles under native ICU with status 0. Host tests/build/lint
+pass after the fix (30 tests, zero lint errors, 10 existing warnings).
+
+This reproduces the regex defect on the host, not the full reported device crash.
+No Android 14 device log or post-fix on-device result was collected. The rebuilt
+APK requires a Help interpretation/execution check on the affected device. No
+permission grant is required for Help. Existing target hardware gates remain open.
+
 | Control | Implemented behavior | Still requires target evidence |
 | --- | --- | --- |
 | Volume | Fixed-volume check, music-stream mapping, Android state readback | Audible effect for radio/navigation/music; OEM mute/range/no-op |
