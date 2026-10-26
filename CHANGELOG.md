@@ -2,6 +2,19 @@
 
 ## 0.1.0 - In development
 
+- Fix completed Vosk utterances being displayed as partials and discarded before
+    an empty trailing final result. A nonempty endpoint result now ends capture
+    and reaches the existing validated command pipeline once; partials remain
+    display-only. Host regression tests cover endpoint, partial and silence cases;
+    the reported device behavior still requires retesting.
+
+- Milestone 3: add offline Vosk push-to-talk (`vosk-android:0.3.47`), explicit
+    model ZIP import into private storage, runtime microphone permission, typed
+    voice lifecycle, final-only dispatch through the existing command engine, and
+    optional offline-only Android TTS. Real model, voice and target-device
+    verification remain outstanding; production radio remains on its existing
+    unsupported adapter.
+
 - Fix Android ICU-incompatible placeholder regexes that can crash Interpret;
     parser and configuration validation share an explicitly escaped expression.
     Reproduce old-pattern failure with native ICU and verify the corrected source

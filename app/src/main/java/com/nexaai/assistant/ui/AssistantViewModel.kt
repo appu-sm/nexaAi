@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.nexaai.assistant.data.*
 import com.nexaai.assistant.domain.*
 import com.nexaai.assistant.execution.*
+import com.nexaai.assistant.speech.*
 import java.io.IOException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -19,6 +21,9 @@ data class AssistantUiState(
     val message: String? = null,
     val importPreview: Configuration? = null,
     val controls: CommandUiState = CommandUiState(),
+    val voice: VoiceState = VoiceState.Idle(),
+    val speechOutput: SpeechOutputState = SpeechOutputState.Initializing,
+    val modelInstalled: Boolean = false,
 )
 
 data class CommandUiState(
@@ -36,13 +41,27 @@ class AssistantViewModel(
     private val repository: ConfigurationRepository,
     private val documents: ConfigurationDocuments,
     private val runtime: CommandRuntime? = null,
+    speechEngine: SpeechRecognizerEngine? = null,
+    speechModelInstaller: SpeechModelInstaller? = null,
+    speechOutput: SpeechOutput? = null,
 ) : ViewModel() {
     private val busy = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
     private val preview = MutableStateFlow<Configuration?>(null)
     private val controls = MutableStateFlow(CommandUiState())
-    val state = combine(repository.snapshots, busy, message, preview, controls) { snapshot, working, notice, imported, commandState ->
+    private val voiceRuntime = if (runtime != null && speechEngine != null && speechModelInstaller != null && speechOutput != null) {
+        SpeechSessionCoordinator(speechEngine, speechModelInstaller, runtime.dispatcher, speechOutput, viewModelScope) {
+            repository.snapshots.first().configuration.settings.ttsEnabled
+        }
+    } else null
+    private val voiceState = voiceRuntime?.state ?: MutableStateFlow<VoiceState>(VoiceState.Idle("Speech engine unavailable."))
+    private val outputState = voiceRuntime?.outputState ?: MutableStateFlow<SpeechOutputState>(SpeechOutputState.Unavailable("Speech output unavailable."))
+    private val modelInstalled = voiceRuntime?.modelInstalled ?: MutableStateFlow(false)
+    private val baseState = combine(repository.snapshots, busy, message, preview, controls) { snapshot, working, notice, imported, commandState ->
         AssistantUiState(snapshot, working, notice, imported, commandState)
+    }
+    val state = combine(baseState, voiceState, outputState, modelInstalled) { shell, voice, speech, installed ->
+        shell.copy(voice = voice, speechOutput = speech, modelInstalled = installed)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AssistantUiState())
 
     init {
@@ -94,6 +113,18 @@ class AssistantViewModel(
         if (controls.value.working) return
         val result = runtime?.dispatcher?.cancelPending() ?: CommandResult.InvalidParameters("Command engine unavailable")
         controls.value = controls.value.copy(pending = null, result = result)
+    }
+
+    fun startVoice() { voiceRuntime?.start() }
+    fun finishVoice() { voiceRuntime?.finish() }
+    fun cancelVoice() { voiceRuntime?.cancel() }
+    fun cancelVoiceForLifecycle() { voiceRuntime?.cancelForLifecycle() }
+    fun microphonePermissionDenied(permanentlyDenied: Boolean) {
+        voiceRuntime?.microphonePermissionDenied(permanentlyDenied)
+    }
+    fun installSpeechModel(uri: Uri) { voiceRuntime?.installModel(uri) }
+    fun setTtsEnabled(enabled: Boolean) = perform("Speech response preference saved") {
+        repository.update { it.copy(settings = it.settings.copy(ttsEnabled = enabled)) }
     }
 
     fun saveAllowedApp(packageName: String, aliases: List<String>) = perform("App allowlist saved") {
@@ -174,5 +205,10 @@ class AssistantViewModel(
     fun exportDocument(uri: Uri) {
         val configuration = state.value.snapshot.configuration
         perform("Configuration exported") { documents.write(uri, configuration) }
+    }
+
+    override fun onCleared() {
+        voiceRuntime?.close()
+        super.onCleared()
     }
 }

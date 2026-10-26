@@ -107,25 +107,63 @@ ViewModel coroutines publish immutable UI state on main. Capability refresh is
 explicit; execution always rechecks, including permission revocation. Development
 transcripts, results and tokens remain in memory only.
 
-Production radio is `UnsupportedRadioController`. Tuning requires an injected
-verified `FmBand`; test bands are not device evidence. Listening refuses start/stop
-without pretending to record. Help/repeat are text only, without TTS. No dependency,
-speech runtime, LLM or network was added. The manifest adds normal
-`MODIFY_AUDIO_SETTINGS` and an optional system-bound notification-listener service,
-not recording or a foreground service.
+The current production `CommandRuntime` constructs `UnsupportedRadioController`.
+The dispatcher accepts an injected `RadioController`, which permits fake-band
+tests, but there is no production radio implementation in this source tree. The
+reported target radio behavior is not altered by the speech milestone and is not
+claimed by this build. Voice radio phrases therefore receive the same truthful
+unsupported result as typed commands.
 
-## Later speech state machine (not implemented here)
+## Milestone 3 offline speech
 
-Idle -> Listening -> Recognizing -> Processing -> Executing -> Speaking -> Idle.
-Cancellation/error must release microphone resources and return to a safe state.
-Only final speech results may reach a validated dispatcher. Partial recognition
-and local model output are untrusted. No UI-only transition may imply actual
-recording or execution. The shell reports Idle/unavailable, not simulated states.
+```text
+Home mic -> SpeechSessionCoordinator -> SpeechRecognizerEngine (Vosk)
+    -> bounded AudioRecord capture / partial UI -> final transcript only
+    -> existing CommandDispatcher.prepare -> single-use PreparedCommand
+    -> existing CommandDispatcher.execute -> existing controller/result
+    -> UI result + optional offline-only Android TextToSpeech
+```
+
+`SpeechSessionCoordinator` owns the typed `VoiceState` flow and a single-session
+gate. It uses the repository's `normalizeAlias`, never dispatches partials, rejects
+empty final transcripts, and sends normalized final text through the same parser,
+validator, configuration checks and dispatcher as typed input. A valid voice
+command executes once after `prepare`; typed development input keeps its existing
+explicit Interpret/Execute confirmation path. Rejected, disabled, unsupported,
+permission and controller outcomes remain `CommandResult` values.
+
+`VoskSpeechRecognizerEngine` owns one cached `org.vosk.Model` per ViewModel runtime
+and creates/closes a recognizer for each push-to-talk session. `AudioRecord` uses
+VOICE_RECOGNITION, 16 kHz, mono, signed 16-bit PCM and bounded buffers; capture is
+limited to 15 seconds and ends on Finish, Cancel, lifecycle stop, timeout or error.
+Only final Vosk JSON text is submitted. Vosk confidence is not invented; exact
+parser/validator matching remains the conservative gate. Initialization and
+inference run off main.
+
+`VoskModelInstaller` accepts a user-selected content URI, extracts into a staging
+directory, rejects traversal/oversize archives and requires core model files before
+replacing the private model directory. No model is bundled or fetched automatically.
+Missing, invalid or ABI-incompatible model data produces an on-screen error; there
+is no online fallback. See [Models](MODELS.md).
+
+`AndroidSpeechOutput` initializes TextToSpeech asynchronously, selects an installed
+English voice without the network-synthesis feature, and reports unavailable if
+none qualifies. It never installs voice data or falls back to a cloud engine. The
+persisted TTS switch defaults off; `QUEUE_FLUSH` replaces any ongoing utterance.
+Detailed results remain visible if speech is disabled or unavailable.
+
+The microphone permission is requested only from the Home mic action. No foreground
+service, wake word or boot listener was added. Leaving Home or backgrounding the
+activity cancels capture; ViewModel cleanup releases the native model off main.
+Audio and transcripts are not logged, stored or uploaded. Host fakes cover
+coordinator/dispatcher semantics; they do not verify model quality, actual TTS
+offline behavior or the head unit.
 
 ## SDK behavior to preserve in later work
 
 Android 9 restricts background microphone access. Android 11 adds microphone
-foreground-service type requirements. Android 12 restricts background service
+foreground-service type requirements. Push-to-talk stays in the visible activity
+and does not use a microphone foreground service. Android 12 restricts background service
 starts; Android 14 adds typed FGS permissions and while-in-use checks; newer
 targets further restrict boot starts. Overlay permission is separate from
 microphone permission. None of these permissions/services is needed by Milestone 1.

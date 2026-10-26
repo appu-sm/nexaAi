@@ -9,6 +9,9 @@ import com.nexaai.assistant.data.ConfigurationRepository
 import com.nexaai.assistant.data.LegacySettingsMigration
 import com.nexaai.assistant.data.AppAllowlistRepository
 import com.nexaai.assistant.execution.*
+import com.nexaai.assistant.speech.AndroidSpeechOutput
+import com.nexaai.assistant.speech.VoskModelInstaller
+import com.nexaai.assistant.speech.VoskSpeechRecognizerEngine
 
 class NexaAiApplication : Application() {
     private val store by lazy {
@@ -26,4 +29,7 @@ class NexaAiApplication : Application() {
         CommandRuntime(repository, AppAllowlistRepository(store), AndroidAppDevice(this),
             VerifiedVolumeController(AndroidVolumeDevice(this)), SessionMediaController(AndroidMediaDevice(this)))
     }
+    val speechEngine by lazy { VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15")) }
+    val speechModelInstaller by lazy { VoskModelInstaller(filesDir, contentResolver) }
+    val speechOutput by lazy { AndroidSpeechOutput(this) }
 }

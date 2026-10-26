@@ -30,6 +30,11 @@ class ConfigurationTest {
         assertEquals(19, original.commands.size)
     }
 
+    @Test fun offlineSpeechResponsePreferenceCanBePersisted() {
+        val enabled = Configuration(settings = AssistantSettings(ttsEnabled = true))
+        assertEquals(enabled, ConfigurationCodec.decode(ConfigurationCodec.encode(enabled)))
+    }
+
     @Test fun invalidVersionsFieldsAndFeatureFlagsAreRejected() {
         val json = ConfigurationCodec.encode(Configuration())
         listOf(

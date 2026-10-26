@@ -77,7 +77,7 @@ object ConfigurationValidator {
         with(config.settings) {
             require(displayName.trim() == displayName && displayName.length in 1..40 && displayName.none { it.isISOControl() }) { "Name must be 1-40 printable characters with no outer spaces" }
             require(offlineOnly && listeningMode == "PUSH_TO_TALK" && !wakeWordEnabled &&
-                wakePhrase == "Hey Nexa" && !autoStartAfterBoot && !overlayEnabled && !ttsEnabled &&
+                wakePhrase == "Hey Nexa" && !autoStartAfterBoot && !overlayEnabled &&
                 confirmationMode == "SHORT" && !llmEnabled && !debugLoggingEnabled) {
                 "Configuration enables an unavailable feature; only the app shell is installed"
             }

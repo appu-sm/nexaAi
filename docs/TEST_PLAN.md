@@ -66,7 +66,8 @@ acceptance gates below remain unverified rather than passed.
 6. Try corrupt, oversize and future-version configuration; existing settings must survive.
 7. Reset with cancel/confirm; verify safe defaults after restart.
 8. Disable networking; repeat configuration flows. No speech claim follows from this test.
-9. Confirm microphone controls are disabled with reasons and no recording indicator appears.
+9. Use visible push-to-talk only: verify runtime permission grant/denial, and ensure
+	Cancel, Home navigation, backgrounding and the 15-second cap stop capture.
 10. Check touch targets, focus/pressed states, readable wrapping and scroll access on the head unit.
 
 ## Milestone 2 host results (2026-10-23)
@@ -148,6 +149,56 @@ as passed. Unsupported or rejected commands must still leave Execute disabled.
 
 LLM JSON safety and model-load fallback remain deferred to their real runtime
 milestones; Milestone 2 introduces no LLM/speech/model dependency.
+
+## Milestone 3 host tests and setup
+
+Speech session tests use fake recognizer, installer, command controllers and TTS
+output. They cover successful/failed initialization, empty/partial/final text,
+single submission, duplicate start, cancellation, permission denial, parser
+rejection for unknown/ambiguous/disabled/invalid commands, injected radio dispatch,
+truthful unsupported/failure speech, TTS disabled/unavailable and cleanup. A
+malformed local ZIP test covers model import rejection. These tests do not load the
+real Vosk model, access a microphone, initialize a real TTS voice or call tuner
+hardware. See [Models](MODELS.md) for local model setup.
+
+Final host gate on 2026-10-24: `:app:testDebugUnitTest` passed **40 tests** with
+zero failures/errors/skips; `:app:assembleDebug` succeeded; `:app:lintDebug`
+reported zero errors and 10 existing target/dependency/backup warnings. The debug
+APK is approximately 93 MiB and contains Vosk libraries for arm64-v8a,
+armeabi-v7a, x86 and x86_64. The merged manifest contains `RECORD_AUDIO` and
+`MODIFY_AUDIO_SETTINGS`, with no Internet permission. No target device, real model,
+microphone or TTS voice was available, so those remain manual acceptance gates.
+
+## Manual Milestone 3 acceptance (not yet run)
+
+Recognition-result correction (2026-10-26): a user reports visible partial speech
+followed by an empty-recognition error, including after Finish. Inspection found
+the engine consumed Vosk endpoint `result` as partial feedback, then returned only
+the often-empty trailing `finalResult`. Nonempty endpoint text now immediately
+ends capture and returns to the existing coordinator. `VoskResultTest` distinguishes
+completed endpoints from partials and silence; existing coordinator tests cover
+final-only single dispatch and cancellation. Retest on-device with a configured
+alias such as `volume up`, both waiting for the endpoint and tapping Finish.
+
+1. Install on the stationary target, note Android/API, ABI, available storage/RAM,
+	grant `RECORD_AUDIO` only when prompted, then deny/revoke it and verify typed
+	command entry remains usable.
+2. Import the official 40 MB English model ZIP through Models. Try missing, corrupt,
+	incomplete and low-storage cases; confirm useful errors and no network fallback.
+3. Disable Wi-Fi and mobile data; test volume 30%, a selected friendly app, play/
+	pause, unknown/ambiguous phrases and invalid FM frequencies. Record transcript,
+	typed result and actual action separately.
+4. Verify partial speech never acts, Finish submits once, and Cancel/navigation/
+	background/timeout stop capture. Check another app does not keep the microphone.
+5. In Android TTS settings, select an installed English offline voice. Test with TTS
+	off/on, missing voice data and network disabled; verify no automatic download and
+	that errors remain visible.
+6. Retest actual radio operations only against verified controller integration and
+	target evidence. Current production runtime explicitly routes radio to
+	`UnsupportedRadioController`; fake dispatcher tests are not a radio device test.
+7. Measure cold/warm model load, recognition latency, peak RAM/CPU, battery impact
+	and interference with radio/navigation. Record results before calling the head unit
+	compatible or the complete offline flow verified.
 
 ## Target acceptance matrix (all not yet verified)
 

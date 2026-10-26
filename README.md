@@ -28,15 +28,17 @@ orientation is forced. No release signing credentials are included.
 Milestone 0 establishes a buildable Android baseline. Milestone 1 implements six
 screens, persistent versioned configuration and an editable command catalogue.
 Milestone 2 adds deterministic command execution and safe Android controls.
-Later milestones own speech, models, verified radio, startup and wake word.
+Milestone 3 adds offline push-to-talk recognition and optional offline TTS.
+Verified radio, startup and wake word remain separate device/integration gates.
 An enabled alias is not proof of hardware support. Do not use this
 development build as an operational driving assistant.
 
 Implemented controls: assistant preference, display name, searchable command
 definitions, command enablement, add/remove/edit aliases, collision validation,
 confirmed resets, validated JSON import with preview/confirmation, and export.
-Settings that need later integrations are read-only with reasons rather than
-cosmetic toggles. TTS is off until a real offline voice can be verified.
+Settings that need later integrations remain read-only with reasons. The spoken
+response toggle is available only when Android reports an installed English offline
+voice; it defaults off.
 
 Milestone 2 adds typed commands/results, exact alias parsing, central validation,
 single-use dispatch and cancellation. In Home, type `help`, Interpret, then
@@ -51,8 +53,14 @@ hardware actions. Test actual controls only while stationary.
 - Media requires optional notification-listener access in Commands/Diagnostics,
     exactly one active session and an advertised action. Results say request sent;
     playback changes are not verified.
-- FM tune/seek and start/stop listening return explicit unsupported results.
-    Help/repeat work as text only. No vendor API or tuner band is invented.
+- Push-to-talk uses Vosk locally after a user imports the model ZIP; only final
+    transcripts reach the existing deterministic command dispatcher. No model is bundled.
+- FM tune/seek remain unsupported in the current production runtime, whose
+    `CommandRuntime` explicitly uses `UnsupportedRadioController`; no radio code was
+    changed or fabricated by this milestone. Fake-controller tests are not device
+    radio evidence.
+- START/STOP_LISTENING command aliases remain unsupported; listening is controlled
+    by the visible Home push-to-talk button. Help/repeat remain text-first.
 
 Preferences schema 1 migrates the early `display_name` key when present. Missing
 data uses safe defaults; corrupt data shows recovery status; future schema
@@ -61,13 +69,17 @@ reset or validated import can recover the store. Imports/exports are limited to
 64 KiB UTF-8; unsupported settings, unknown commands/fields, invalid aliases and
 alias collisions are rejected. All 19 catalogue IDs must appear exactly once.
 
-No model is bundled and no dependency was added for Milestone 2. Microphone,
-overlay, boot, foreground-service, notification-posting and internet permissions
-remain absent. Normal `MODIFY_AUDIO_SETTINGS` is declared. Media uses a
+No speech model is bundled. Vosk Android `0.3.47` is pinned; model setup is manual
+and documented in [Models](docs/MODELS.md). Microphone permission is requested only
+after tapping the Home mic button. Internet, overlay, boot, foreground-service and
+notification-posting permissions remain absent. Normal `MODIFY_AUDIO_SETTINGS` is
+declared. Media uses a
 system-protected notification-listener service with optional special access:
 the access is broad, but NexaAI does not inspect or store notification contents.
 No `QUERY_ALL_PACKAGES`, arbitrary shell, user-supplied intents or inferred package
-names are used. Speech, radio, wake word and automatic startup remain unavailable.
+names are used. Push-to-talk code is implemented, but offline recognition and TTS
+have not been physically verified. Radio remains unsupported in the current
+production runtime; wake word and automatic startup remain unavailable.
 
 ## Verification and troubleshooting
 
@@ -75,17 +87,19 @@ Automated results and manual acceptance gates are tracked in
 [the test plan](docs/TEST_PLAN.md). Host JVM/Compose tests cannot establish
 K2501 hardware compatibility. A debug APK is for stationary device testing.
 
-Host validation: debug build, all 29 unit/configuration/Compose tests and lint
-pass (zero errors, 10 existing dependency/target warnings). UI tests
-run with Robolectric API 28, not an attached emulator/head unit. Target hardware
-checks remain unperformed. Speech is unimplemented; OEM controls remain
-unverified on the target. Lint retains dependency-update/target notices;
+Host validation: 40 unit/configuration/Compose tests pass; `:app:assembleDebug`
+and `:app:lintDebug` pass with zero errors and 10 existing warnings. UI tests run
+with Robolectric API 28, not an attached emulator/head unit. The debug APK is about
+93 MiB and packages Vosk ABIs arm64-v8a, armeabi-v7a, x86 and x86_64. Target hardware
+checks remain unperformed; offline model loading, offline voices and OEM controls
+are not verified on the target. See [test results](docs/TEST_PLAN.md).
 the toolchain is intentionally pinned rather than upgraded without testing.
 
 - Missing SDK: set `ANDROID_HOME` or an untracked `local.properties`.
 - Dependency resolution failure: check access to Google Maven, Maven Central,
   and the Gradle distribution server; the first build is not offline.
-- Unavailable speech: expected until Milestone 3 and explicit offline model setup.
+- Missing/corrupt speech model: import the official ZIP from the Models screen; no
+    automatic download or online fallback is attempted.
 - Radio unavailable: no verified public vendor interface has been collected.
 - Volume state differs from audible output: record the active source; only
     `STREAM_MUSIC` is changed, not an invented OEM mixer API.
@@ -104,8 +118,6 @@ the toolchain is intentionally pinned rather than upgraded without testing.
 - [Model inventory and licensing](docs/MODELS.md)
 - [Changelog](CHANGELOG.md)
 
-`AGENT.md` remains the product source of truth. This project does not claim the
-initial-release definition of done is satisfied by an app shell.
-
-Next: Milestone 3, offline speech/model setup, audio lifecycle and offline TTS
-verification. These are not included in this command-engine milestone.
+`AGENT.md` remains the product source of truth. Milestone 3 code is implemented,
+but the requested end-to-end definition of done is not complete until the real
+model, offline voice and target head unit are tested.

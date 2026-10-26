@@ -18,19 +18,20 @@ not independently measured device findings.
 | Available app storage | Unverified | `adb shell df -h /data` |
 | Radio package/API | Unverified; explicit unsupported adapter | Installed package evidence and documented/exported vendor API |
 | Volume/media/app launch | Milestone 2 implemented; target unverified | Actual source/app/session tests on head unit |
-| Speech/TTS | Not implemented (Milestone 3) | Engine, offline models/voices and airplane-mode tests |
+| Speech/TTS | Milestone 3 code implemented; target unverified | Real model/voice, airplane-mode, ABI, latency, RAM and lifecycle tests |
 | Overlay/boot/service | Not implemented (Milestone 5) | Permission and ignition/sleep/reboot tests |
 | Wake word/local LLM | Not implemented; off | Real engines and target measurements |
 
-No hardware-dependent capability has been verified. No proprietary radio APIs,
-microphone capture or background recording service is included. Optional Android
-notification-listener access must be explicitly granted for media sessions.
+No hardware-dependent capability has been verified. No proprietary radio API or
+background recording service is included. Microphone capture is push-to-talk only
+and requires runtime permission. Optional Android notification-listener access
+must be explicitly granted for media sessions.
 
 ## Project baseline
 
 Package/namespace: `com.nexaai.assistant`; minimum API 28; compile/target API 35.
 AGP 8.9.2, Gradle 8.11.1, Kotlin/Compose plugin 2.1.20, Compose BOM 2025.04.01.
-No bundled models or speech/LLM native runtime. APK inspection found AndroidX
+Vosk Android `0.3.47` is included; no speech model is bundled. APK inspection found AndroidX
 `libandroidx.graphics.path.so` and `libdatastore_shared_counter.so` for arm64-v8a,
 armeabi-v7a, x86 and x86_64 (60,292 bytes uncompressed in total). Presence of an
 ABI in the APK is not proof of compatibility with the target firmware.
@@ -92,10 +93,29 @@ Existing K2501 hardware acceptance gates remain open.
 | App/home | User-selected installed allowlist and launch intent; home request | Firmware package visibility and actual app/home behavior |
 | Media | Optional listener access, single session, advertised actions only | Grant/revoke, intended players, actual playback/track changes |
 | Radio | Unsupported; no vendor calls or assumed band | Verified interface/privileges, regional band/step, tune/seek readback |
-| Listening | Unsupported; microphone off | Milestone 3 engine/model and lifecycle |
+| Push-to-talk | Milestone 3 code implemented; model required | Microphone, offline model, lifecycle and performance on K2501 |
 
 No device attachment or K2501 test was performed for this milestone. Runtime
 Diagnostics reads this running device's facts and API capability checks; it does
 not establish target compatibility. Host tests do not prove audible changes,
 launches, playback, airplane-mode operation or target memory/latency. Use Home
 commands while stationary to record outcomes per source/player. See `TEST_PLAN.md`.
+
+## Milestone 3 host evidence (2026-10-24)
+
+- Pinned `com.alphacephei:vosk-android:0.3.47`; no model is bundled. Vosk lists
+	`vosk-model-small-en-us-0.15` as 40 MB and Apache-2.0. The user imports the ZIP
+	into private app storage. Target ABI remains unknown; artifact packaging alone
+	does not establish native compatibility.
+- Fake-engine/controller/TTS tests cover final-only dispatch, cancellation,
+	duplicate prevention, parser/validator rejection, radio dispatcher routing,
+	truthful result speech and cleanup. A malformed ZIP test covers model-store
+	rejection. Tests do not use a real model, microphone, TTS voice or radio hardware.
+- Capture uses 16 kHz mono PCM16, a 15-second limit and runtime `RECORD_AUDIO`
+	permission requested only after mic tap. No wake word, boot listener or
+	foreground service is implemented.
+- Offline recognition, offline TTS, native ABI loading, accuracy, latency, peak
+	RAM and K2501 radio interoperability remain unverified.
+- The debug APK is about 93 MiB and packages Vosk native libraries for arm64-v8a,
+	armeabi-v7a, x86 and x86_64. This is packaging evidence only; the target ABI is
+	still unknown and the debug size is not a runtime RAM measurement.

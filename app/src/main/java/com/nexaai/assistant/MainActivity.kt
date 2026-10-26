@@ -17,7 +17,10 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
                 return AssistantViewModel((application as NexaAiApplication).repository,
-                    ConfigurationDocuments(contentResolver), (application as NexaAiApplication).commandRuntime) as T
+                    ConfigurationDocuments(contentResolver), (application as NexaAiApplication).commandRuntime,
+                    (application as NexaAiApplication).speechEngine,
+                    (application as NexaAiApplication).speechModelInstaller,
+                    (application as NexaAiApplication).speechOutput) as T
             }
         }
     }

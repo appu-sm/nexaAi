@@ -21,13 +21,18 @@ class ShellUiTest {
     }
 
     @Test fun sixScreensAndUnavailableMicrophone() {
-        compose.onNodeWithTag("microphone").assertIsNotEnabled()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("microphone").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        compose.onNodeWithTag("microphone").assertIsEnabled()
         navigate("COMMANDS")
         compose.onNodeWithTag("command_search").assertExists()
         navigate("SETTINGS")
         compose.onNodeWithTag("display_name").assertExists()
         navigate("MODELS")
-        compose.onNodeWithText("No installed models").assertExists()
+        compose.onNodeWithText("No installed speech model").assertExists()
         navigate("DIAGNOSTICS")
         compose.onNodeWithText("This device").assertExists()
         navigate("HELP")
@@ -88,7 +93,7 @@ class ShellUiTest {
             }
         }
         compose.onNodeWithTag("execute_command").assertIsNotEnabled()
-        compose.onNodeWithTag("microphone").assertIsNotEnabled()
+        compose.onNodeWithTag("microphone").assertIsEnabled()
     }
 
     @Test
@@ -114,6 +119,6 @@ class ShellUiTest {
         compose.onNodeWithText("Reset", useUnmergedTree = true).performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Settings reset").fetchSemanticsNodes().isNotEmpty() }
         navigate("HOME")
-        compose.onNodeWithTag("assistant_state").assertTextEquals("Idle - speech unavailable")
+        compose.onNodeWithTag("assistant_state").assertTextEquals("Idle - offline model not installed")
     }
 }

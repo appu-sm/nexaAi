@@ -7,8 +7,8 @@ app-private Preferences DataStore. Development transcripts/results stay in memor
 only, not logs or storage. No audio, contacts, locations, analytics or telemetry
 are collected. No runtime network permission is declared. Backup is disabled;
 Android 12+ cloud-backup/device-transfer rules also exclude app data. OEM backup
-behavior is not verified on the target. The debug APK includes AndroidX graphics
-and DataStore native helpers, not a speech or model runtime.
+behavior is not verified on the target. The debug APK includes Vosk native runtime
+libraries but no speech model.
 
 Import/export uses the Android Storage Access Framework: the user chooses a
 document, with no broad storage permission. Configuration exports contain only
@@ -20,9 +20,19 @@ exported documents remain wherever the user saved them.
 Debug logging is unavailable, off, and does not record transcripts. There are no
 local logs to clear. Destructive configuration resets require confirmation.
 
-## Deferred permissions
+## Microphone and offline speech
 
-- Microphone: request only with an implemented speech engine and explicit listening.
+- `RECORD_AUDIO`: declared for push-to-talk and requested only after the user taps
+	the Home microphone control. Denial leaves typed command testing available;
+	permanent denial points to Android app settings.
+- Speech runs locally through Vosk. Capture uses a bounded in-memory PCM buffer;
+	audio and transcripts are not saved, logged or uploaded. The imported model is
+	stored in private app files, not copied to public storage.
+- TTS uses an already-installed English voice not marked as network synthesis.
+	NexaAI never downloads voice data. TTS defaults off, and on-screen results remain
+	available if speech output is disabled or unavailable.
+
+## Deferred permissions
 - Overlay: optional, disabled by default; system grant does not grant microphone access.
 - Boot: optional, best effort, disabled by default; never silent continuous recording.
 - Foreground service/notification posting: only with a real, visible service and SDK-compliant types.
@@ -48,8 +58,7 @@ service, root, arbitrary shell execution or hidden vendor API is used.
 	Access can be revoked there; execution rechecks. No notification-posting or
 	privileged `MEDIA_CONTENT_CONTROL` permission is requested.
 
-Offline app configuration can be tested without networking. This does not mean
-offline speech has been implemented or verified. Future model downloads/imports
-must require explicit consent and documented source/license/size. Do not treat
-Android default recognition or TTS as offline without inspecting actual engines
-and installed voices.
+The app has no runtime network permission. Offline recognition and TTS code paths
+are implemented, but they have not been physically verified in airplane mode on
+the target device. The model import is explicit and documents its source/license;
+the English TTS voice must be checked on the device before enabling speech.
