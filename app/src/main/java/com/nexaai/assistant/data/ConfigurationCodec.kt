@@ -11,6 +11,17 @@ class ConfigurationException(message: String) : IllegalArgumentException(message
 
 object ConfigurationCodec {
     const val MAX_BYTES = 64 * 1024
+    private val preRadioCommandIds = setOf(
+        CommandId.SET_VOLUME, CommandId.VOLUME_UP, CommandId.VOLUME_DOWN, CommandId.MUTE, CommandId.UNMUTE,
+        CommandId.LAUNCH_APP, CommandId.GO_HOME, CommandId.PLAY, CommandId.PAUSE, CommandId.NEXT_TRACK,
+        CommandId.PREVIOUS_TRACK, CommandId.TUNE_FM, CommandId.SEEK_NEXT, CommandId.SEEK_PREVIOUS,
+        CommandId.START_LISTENING, CommandId.STOP_LISTENING, CommandId.HELP, CommandId.REPEAT_RESPONSE,
+        CommandId.CANCEL,
+    )
+    private val radioCommandIds = setOf(
+        CommandId.OPEN_RADIO, CommandId.MUTE_RADIO, CommandId.UNMUTE_RADIO,
+        CommandId.AUTO_MEMORY_SCAN, CommandId.RADIO_INTRO_SCAN,
+    )
     private val settingKeys = setOf("assistantEnabled", "displayName", "offlineOnly", "listeningMode",
         "wakeWordEnabled", "wakePhrase", "autoStartAfterBoot", "overlayEnabled", "ttsEnabled",
         "confirmationMode", "llmEnabled", "debugLoggingEnabled")
@@ -55,12 +66,7 @@ object ConfigurationCodec {
                 return settings.getString(key)
             }
             val commands = root.getJSONArray("commands")
-            val config = Configuration(settings = AssistantSettings(
-                boolean("assistantEnabled"), string("displayName"), boolean("offlineOnly"), string("listeningMode"),
-                boolean("wakeWordEnabled"), string("wakePhrase"), boolean("autoStartAfterBoot"),
-                boolean("overlayEnabled"), boolean("ttsEnabled"), string("confirmationMode"),
-                boolean("llmEnabled"), boolean("debugLoggingEnabled"),
-            ), commands = (0 until commands.length()).map { index ->
+            val savedCommands = (0 until commands.length()).map { index ->
                 val command = commands.getJSONObject(index)
                 require(command.keys().asSequence().toSet() == setOf("id", "enabled", "aliases")) { "Unknown or missing command fields" }
                 require(command.get("id") is String && command.get("enabled") is Boolean) { "Invalid command field type" }
@@ -70,7 +76,34 @@ object ConfigurationCodec {
                         require(aliases.get(aliasIndex) is String) { "Alias must be text" }
                         aliases.getString(aliasIndex)
                     })
-            })
+            }
+            val savedIds = savedCommands.map { it.id }
+            val migratedCommands = if (savedIds.size == preRadioCommandIds.size && savedIds.toSet() == preRadioCommandIds) {
+                val completed = savedCommands.toMutableList()
+                CommandCatalogue.defaults().filter { it.id in radioCommandIds }.forEach { radioCommand ->
+                    val aliases = radioCommand.aliases.filter { candidate ->
+                        completed.none { existing -> existing.aliases.any { ConfigurationValidator.aliasesConflict(it, candidate) } }
+                    }
+                    val safeRadioCommand = if (aliases.isNotEmpty()) radioCommand.copy(aliases = aliases) else {
+                        val base = "nexa radio ${radioCommand.id.name.lowercase().replace('_', ' ')}"
+                        var alias = base
+                        var suffix = 2
+                        while (completed.any { existing -> existing.aliases.any { ConfigurationValidator.aliasesConflict(it, alias) } }) {
+                            alias = "$base $suffix"
+                            suffix++
+                        }
+                        radioCommand.copy(aliases = listOf(alias))
+                    }
+                    completed += safeRadioCommand
+                }
+                completed
+            } else savedCommands
+            val config = Configuration(settings = AssistantSettings(
+                boolean("assistantEnabled"), string("displayName"), boolean("offlineOnly"), string("listeningMode"),
+                boolean("wakeWordEnabled"), string("wakePhrase"), boolean("autoStartAfterBoot"),
+                boolean("overlayEnabled"), boolean("ttsEnabled"), string("confirmationMode"),
+                boolean("llmEnabled"), boolean("debugLoggingEnabled"),
+            ), commands = migratedCommands)
             ConfigurationValidator.validate(config)
             return config
         } catch (error: SerializationException) {

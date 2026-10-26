@@ -193,9 +193,9 @@ alias such as `volume up`, both waiting for the endpoint and tapping Finish.
 5. In Android TTS settings, select an installed English offline voice. Test with TTS
 	off/on, missing voice data and network disabled; verify no automatic download and
 	that errors remain visible.
-6. Retest actual radio operations only against verified controller integration and
-	target evidence. Current production runtime explicitly routes radio to
-	`UnsupportedRadioController`; fake dispatcher tests are not a radio device test.
+6. Radio request adapter host tests are covered under Milestone 4; complete the
+	separate installed-APK radio checklist below on K2501 before claiming device
+	compatibility.
 7. Measure cold/warm model load, recognition latency, peak RAM/CPU, battery impact
 	and interference with radio/navigation. Record results before calling the head unit
 	compatible or the complete offline flow verified.
@@ -209,7 +209,7 @@ alias such as `volume up`, both waiting for the endpoint and tapping Finish.
 | Audio lifecycle | Permission denied/granted/revoked, TTS isolation, timeout/cancel |
 | Volume | Each actual source, fixed-volume detection, OEM no-op verification |
 | App/media | Each installed allowlisted app/session and each supported transport action |
-| Radio | Only after verified adapter evidence; tune/seek and observed actual state |
+| Radio | From installed NexaAI APK, test explicit launch, tune, seek, mute/unmute, AMS and INTRO; separately observe receiver delivery and tuner state |
 | Startup | Cold/warm start, reboot, ignition cycle, sleep/wake, screen off |
 | Overlay/service | Grant/deny/revoke, dismiss, battery optimization, no obstructed critical UI |
 | Storage | Low space, corrupt/missing models, safe import/deletion |
@@ -218,3 +218,40 @@ alias such as `volume up`, both waiting for the endpoint and tapping Finish.
 
 Do not proceed to later milestones until the current build and automated gates
 pass. Target-dependent items remain explicitly unverified until tested there.
+
+## Milestone 4 host tests and device checklist
+
+Host tests cover the required voice phrase mappings, outside-band rejection,
+explicit activity component, package-scoped broadcast actions/extras, integer
+frequency conversion (`HALF_UP` to 10 kHz), key values 5/6/46/61, mute booleans,
+and local activity-launch failure. A successful `sendBroadcast()` is treated as
+a request, not receiver or tuner confirmation. These tests do not reproduce
+receiver permissions or prove that the normal NexaAI APK can control the radio.
+
+Final host gate on 2026-10-26: `:app:assembleDebug :app:testDebugUnitTest
+:app:lintDebug --console=plain` passed; all **49 tests** passed, the debug APK
+assembled and lint completed successfully. `git diff --check` is clean. `adb
+devices -l` returned no attached devices, so installed-APK broadcast permissions,
+receiver delivery and K2501 radio behavior were not tested.
+
+The exact pre-radio 19-command schema-1 catalogue is upgraded by adding the five
+radio defaults; existing settings, aliases and enablement are retained. Partial
+or otherwise invalid command catalogues continue to be rejected.
+
+Manual K2501 checklist (not run in this environment):
+
+1. Install the normal debug APK; confirm `com.nwd.radio` is installed and NexaAI
+	can open its explicit activity. Test missing activity/security failure handling
+	where safely possible.
+2. While stationary and offline, execute “Open radio”, “Tune to FM 98.3”, and
+	“Tune to 101.1 FM”; observe actual station and displayed frequency separately
+	from the spoken request confirmation.
+3. Test “Next station” and “Previous station”; confirm station seeking, not a
+	frequency step. Test “Increase frequency” and confirm it never maps to search.
+4. Test “Mute radio” / “Unmute radio”; observe radio audio state separately from
+	the request result.
+5. Test “Scan and save stations” (AMS) and “Preview radio stations” (INTRO)
+	separately; verify the radio's native behavior and saved/previewed stations.
+6. Test unsupported frequency “Tune to 120 FM”, an unknown phrase, receiver
+	permission restrictions, airplane mode, and app restart. Confirm no crash and
+	that no completion is claimed without radio feedback.

@@ -402,7 +402,7 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
         }
         if (speechOutput is SpeechOutputState.Unavailable) Text("On-screen results remain available. Configure an installed English offline voice in Android Settings > System > Languages & input > Text-to-speech output, then close and relaunch NexaAI.")
         Section("AI model", "Off. No runtime or models. Model import, context/output limits and inactivity unloading unavailable (Milestone 7).")
-        Section("Device integration", "Music-stream volume, allowlisted app launching and media-session controls are installed. Runtime availability is shown in Commands and Diagnostics. Radio is unsupported. Target hardware remains unverified. No root/system access.")
+        Section("Device integration", "Music-stream volume, allowlisted app launching, media-session controls and the built-in radio request adapter are installed. Radio receiver access and target hardware behavior remain unverified. No root/system access.")
         Section("Configuration", "Version 1. Name, assistant preference and command edits apply without restarting. Unsupported features cannot be enabled through an import.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = importConfig, enabled = editable) { Icon(Icons.Default.FileOpen, null); Text("Import") }
@@ -429,7 +429,7 @@ private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, mod
     speechOutput: SpeechOutputState, refresh: () -> Unit) = Page("Diagnostics") {
     Section("This device", "${device.manufacturer} / ${device.model}\nAndroid ${device.androidVersion}, API ${device.api}")
     Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested only when push-to-talk is tapped"}.\nInternet, overlay, boot and foreground-service permissions: not declared.")
-    Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: unsupported; no verified adapter\nMicrophone/recognition test: unavailable\nTTS offline availability: unverified\nOverlay/service/boot: not implemented")
+    Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition test: unavailable\nTTS offline availability: unverified\nOverlay/service/boot: not implemented")
     Section("Speech", "Vosk model: ${if (modelInstalled) "installed" else "missing"}\nSpeech output: ${when (speechOutput) {
         SpeechOutputState.Initializing -> "checking"
         SpeechOutputState.Ready -> "offline English voice available"

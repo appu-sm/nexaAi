@@ -16,14 +16,15 @@ not independently measured device findings.
 | CPU ABI | Unverified | `adb shell getprop ro.product.cpu.abilist` |
 | Actual/available RAM | Unverified | `adb shell cat /proc/meminfo` |
 | Available app storage | Unverified | `adb shell df -h /data` |
-| Radio package/API | Unverified; explicit unsupported adapter | Installed package evidence and documented/exported vendor API |
+| Radio interface | User-supplied verified action/component/key mapping; NexaAI adapter implemented | Installed APK receiver permissions/delivery and end-to-end K2501 results |
 | Volume/media/app launch | Milestone 2 implemented; target unverified | Actual source/app/session tests on head unit |
 | Speech/TTS | Milestone 3 code implemented; target unverified | Real model/voice, airplane-mode, ABI, latency, RAM and lifecycle tests |
 | Overlay/boot/service | Not implemented (Milestone 5) | Permission and ignition/sleep/reboot tests |
 | Wake word/local LLM | Not implemented; off | Real engines and target measurements |
 
-No hardware-dependent capability has been verified. No proprietary radio API or
-background recording service is included. Microphone capture is push-to-talk only
+No NexaAI hardware-dependent capability has been verified. The radio protocol
+mapping is user-supplied target evidence; app-level receiver access remains open.
+No background recording service is included. Microphone capture is push-to-talk only
 and requires runtime permission. Optional Android notification-listener access
 must be explicitly granted for media sessions.
 
@@ -92,7 +93,7 @@ Existing K2501 hardware acceptance gates remain open.
 | Volume | Fixed-volume check, music-stream mapping, Android state readback | Audible effect for radio/navigation/music; OEM mute/range/no-op |
 | App/home | User-selected installed allowlist and launch intent; home request | Firmware package visibility and actual app/home behavior |
 | Media | Optional listener access, single session, advertised actions only | Grant/revoke, intended players, actual playback/track changes |
-| Radio | Unsupported; no vendor calls or assumed band | Verified interface/privileges, regional band/step, tune/seek readback |
+| Radio | Request adapter implemented; target behavior unverified | Installed APK permission/delivery, regional band/step, tune/seek/readback |
 | Push-to-talk | Milestone 3 code implemented; model required | Microphone, offline model, lifecycle and performance on K2501 |
 
 No device attachment or K2501 test was performed for this milestone. Runtime
@@ -119,3 +120,21 @@ commands while stationary to record outcomes per source/player. See `TEST_PLAN.m
 - The debug APK is about 93 MiB and packages Vosk native libraries for arm64-v8a,
 	armeabi-v7a, x86 and x86_64. This is packaging evidence only; the target ABI is
 	still unknown and the debug size is not a runtime RAM measurement.
+
+## Milestone 4 host evidence (2026-10-26)
+
+- Integrated the user-supplied `com.nwd.radio` activity and verified broadcasts
+	into the existing command parser, validator and dispatcher. Frequency input is
+	bounded to 87.5-108.0 MHz and converted to 10 kHz units using decimal
+	`HALF_UP` rounding. This range is configured by NexaAI and is not a measured
+	regional tuner plan.
+- Existing schema-1 preferences with the exact prior 19-command catalogue gain
+	the five radio defaults without losing saved settings, aliases or enablement;
+	partial/malformed catalogues still fail closed.
+- Host tests verify parser phrases, exact activity component, package-scoped
+	broadcast actions/extras, key values 5/6/46/61, mute booleans, conversion and
+	local launch failure handling. Build/test/lint results are recorded in
+	`TEST_PLAN.md`.
+- No K2501 was attached. APK broadcast permission, receiver delivery, actual
+	tuning/seeking/muting/AMS/INTRO behavior, and foreground app transition remain
+	unverified. A broadcast send is not treated as completion feedback.

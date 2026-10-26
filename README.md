@@ -29,7 +29,9 @@ Milestone 0 establishes a buildable Android baseline. Milestone 1 implements six
 screens, persistent versioned configuration and an editable command catalogue.
 Milestone 2 adds deterministic command execution and safe Android controls.
 Milestone 3 adds offline push-to-talk recognition and optional offline TTS.
-Verified radio, startup and wake word remain separate device/integration gates.
+Milestone 4 adds the verified NexaAI radio request adapter; K2501 APK-level
+receiver/permission behavior remains a device acceptance gate. Startup and wake
+word remain separate milestones.
 An enabled alias is not proof of hardware support. Do not use this
 development build as an operational driving assistant.
 
@@ -55,10 +57,11 @@ hardware actions. Test actual controls only while stationary.
     playback changes are not verified.
 - Push-to-talk uses Vosk locally after a user imports the model ZIP; only final
     transcripts reach the existing deterministic command dispatcher. No model is bundled.
-- FM tune/seek remain unsupported in the current production runtime, whose
-    `CommandRuntime` explicitly uses `UnsupportedRadioController`; no radio code was
-    changed or fabricated by this milestone. Fake-controller tests are not device
-    radio evidence.
+- Radio commands launch the explicit `com.nwd.radio` activity or send its
+    package-scoped frequency, key and mute broadcasts. Supported actions are tune,
+    next/previous search, mute/unmute, AMS and INTRO. Broadcast responses confirm
+    dispatch requests only; target APK permissions, receiver delivery and tuner
+    effects remain unverified on the K2501.
 - START/STOP_LISTENING command aliases remain unsupported; listening is controlled
     by the visible Home push-to-talk button. Help/repeat remain text-first.
 
@@ -67,7 +70,7 @@ data uses safe defaults; corrupt data shows recovery status; future schema
 versions use safe defaults without silently overwriting stored data. Confirmed
 reset or validated import can recover the store. Imports/exports are limited to
 64 KiB UTF-8; unsupported settings, unknown commands/fields, invalid aliases and
-alias collisions are rejected. All 19 catalogue IDs must appear exactly once.
+alias collisions are rejected. All 24 catalogue IDs must appear exactly once.
 
 No speech model is bundled. Vosk Android `0.3.47` is pinned; model setup is manual
 and documented in [Models](docs/MODELS.md). Microphone permission is requested only
@@ -77,9 +80,11 @@ declared. Media uses a
 system-protected notification-listener service with optional special access:
 the access is broad, but NexaAI does not inspect or store notification contents.
 No `QUERY_ALL_PACKAGES`, arbitrary shell, user-supplied intents or inferred package
-names are used. Push-to-talk code is implemented, but offline recognition and TTS
-have not been physically verified. Radio remains unsupported in the current
-production runtime; wake word and automatic startup remain unavailable.
+names are used. Radio uses one package visibility entry for `com.nwd.radio`, with
+no privileged permission. Push-to-talk code is implemented, but offline
+recognition and TTS have not been physically verified. Radio dispatch and actual
+tuner behavior still require the installed APK and K2501; wake word and automatic
+startup remain unavailable.
 
 ## Verification and troubleshooting
 
@@ -87,8 +92,8 @@ Automated results and manual acceptance gates are tracked in
 [the test plan](docs/TEST_PLAN.md). Host JVM/Compose tests cannot establish
 K2501 hardware compatibility. A debug APK is for stationary device testing.
 
-Host validation: 40 unit/configuration/Compose tests pass; `:app:assembleDebug`
-and `:app:lintDebug` pass with zero errors and 10 existing warnings. UI tests run
+Host validation: 49 unit/configuration/Compose tests pass; `:app:assembleDebug`,
+`:app:testDebugUnitTest` and `:app:lintDebug` pass. UI tests run
 with Robolectric API 28, not an attached emulator/head unit. The debug APK is about
 93 MiB and packages Vosk ABIs arm64-v8a, armeabi-v7a, x86 and x86_64. Target hardware
 checks remain unperformed; offline model loading, offline voices and OEM controls
@@ -100,7 +105,9 @@ the toolchain is intentionally pinned rather than upgraded without testing.
   and the Gradle distribution server; the first build is not offline.
 - Missing/corrupt speech model: import the official ZIP from the Models screen; no
     automatic download or online fallback is attempted.
-- Radio unavailable: no verified public vendor interface has been collected.
+- Radio unavailable: confirm `com.nwd.radio` is installed and inspect the returned
+    local failure. A successful broadcast dispatch does not confirm receiver
+    delivery, tuner completion or changed mute state.
 - Volume state differs from audible output: record the active source; only
     `STREAM_MUSIC` is changed, not an invented OEM mixer API.
 - Unknown app: select the installed app and save friendly aliases in Commands.
@@ -118,6 +125,6 @@ the toolchain is intentionally pinned rather than upgraded without testing.
 - [Model inventory and licensing](docs/MODELS.md)
 - [Changelog](CHANGELOG.md)
 
-`AGENT.md` remains the product source of truth. Milestone 3 code is implemented,
-but the requested end-to-end definition of done is not complete until the real
-model, offline voice and target head unit are tested.
+`AGENT.md` remains the product source of truth. Milestones 3 and 4 code are
+implemented, but end-to-end completion still requires the real model, offline
+voice and target head unit to be tested.

@@ -13,6 +13,37 @@ import com.nexaai.assistant.data.CommandId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+class AndroidRadioDevice(private val context: Context) : RadioDevice {
+    override fun launchRadio(): Boolean {
+        val intent = Intent().setComponent(ComponentName(RadioProtocol.PACKAGE, RadioProtocol.ACTIVITY))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            context.startActivity(intent)
+            true
+        } catch (missing: ActivityNotFoundException) {
+            false
+        }
+    }
+
+    override fun tuneFrequency(frequency10Khz: Int) {
+        context.sendBroadcast(Intent(RadioProtocol.ACTION_SET_FREQUENCY)
+            .setPackage(RadioProtocol.PACKAGE)
+            .putExtra(RadioProtocol.EXTRA_FREQUENCY, frequency10Khz))
+    }
+
+    override fun sendKey(key: Int) {
+        context.sendBroadcast(Intent(RadioProtocol.ACTION_TEST_KEY)
+            .setPackage(RadioProtocol.PACKAGE)
+            .putExtra(RadioProtocol.EXTRA_KEY, key))
+    }
+
+    override fun setMuted(muted: Boolean) {
+        context.sendBroadcast(Intent(RadioProtocol.ACTION_SET_MUTE)
+            .setPackage(RadioProtocol.PACKAGE)
+            .putExtra(RadioProtocol.EXTRA_MUTE, muted))
+    }
+}
+
 class AndroidVolumeDevice(context: Context) : VolumeDevice {
     private val audio = context.getSystemService(AudioManager::class.java)
     override val fixed get() = audio.isVolumeFixed

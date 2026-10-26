@@ -27,7 +27,38 @@ class ConfigurationTest {
         assertFalse(original.settings.llmEnabled)
         assertFalse(original.settings.wakeWordEnabled)
         assertTrue(original.settings.offlineOnly)
-        assertEquals(19, original.commands.size)
+        assertEquals(24, original.commands.size)
+    }
+
+    @Test fun preRadioConfigurationAddsRadioDefaultsAndPreservesUserEdits() {
+        val saved = Configuration(commands = CommandCatalogue.defaults().map {
+            if (it.id == CommandId.VOLUME_UP) it.copy(enabled = false, aliases = listOf("raise volume")) else it
+        })
+        val root = JSONObject(ConfigurationCodec.encode(saved))
+        val commands = root.getJSONArray("commands")
+        val oldCommands = org.json.JSONArray()
+        val radioIds = setOf("OPEN_RADIO", "MUTE_RADIO", "UNMUTE_RADIO", "AUTO_MEMORY_SCAN", "RADIO_INTRO_SCAN")
+        for (index in 0 until commands.length()) {
+            val command = commands.getJSONObject(index)
+            if (command.getString("id") !in radioIds) {
+                if (command.getString("id") == "MUTE") command.put("aliases", org.json.JSONArray().put("mute radio"))
+                oldCommands.put(command)
+            }
+        }
+        root.put("commands", oldCommands)
+
+        val migrated = ConfigurationCodec.decode(root.toString())
+
+        assertEquals(saved.settings, migrated.settings)
+        assertEquals(false, migrated.commands.single { it.id == CommandId.VOLUME_UP }.enabled)
+        assertEquals(listOf("raise volume"), migrated.commands.single { it.id == CommandId.VOLUME_UP }.aliases)
+        assertEquals(listOf("mute radio"), migrated.commands.single { it.id == CommandId.MUTE }.aliases)
+        assertFalse(migrated.commands.single { it.id == CommandId.MUTE_RADIO }.aliases.contains("mute radio"))
+        assertTrue(radioIds.all { id -> migrated.commands.any { it.id.name == id } })
+        assertEquals(24, migrated.commands.size)
+
+        val partial = JSONObject(root.toString()).put("commands", org.json.JSONArray().put(oldCommands.getJSONObject(0)))
+        assertThrows(ConfigurationException::class.java) { ConfigurationCodec.decode(partial.toString()) }
     }
 
     @Test fun offlineSpeechResponsePreferenceCanBePersisted() {

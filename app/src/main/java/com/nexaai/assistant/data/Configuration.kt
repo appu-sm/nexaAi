@@ -18,8 +18,9 @@ data class AssistantSettings(
 )
 
 enum class CommandId { SET_VOLUME, VOLUME_UP, VOLUME_DOWN, MUTE, UNMUTE, LAUNCH_APP,
-    GO_HOME, PLAY, PAUSE, NEXT_TRACK, PREVIOUS_TRACK, TUNE_FM, SEEK_NEXT,
-    SEEK_PREVIOUS, START_LISTENING, STOP_LISTENING, HELP, REPEAT_RESPONSE, CANCEL }
+    GO_HOME, PLAY, PAUSE, NEXT_TRACK, PREVIOUS_TRACK, OPEN_RADIO, TUNE_FM, SEEK_NEXT,
+    SEEK_PREVIOUS, MUTE_RADIO, UNMUTE_RADIO, AUTO_MEMORY_SCAN, RADIO_INTRO_SCAN,
+    START_LISTENING, STOP_LISTENING, HELP, REPEAT_RESPONSE, CANCEL }
 
 data class CommandDefinition(
     val id: CommandId,
@@ -48,9 +49,14 @@ object CommandCatalogue {
         CommandSpec(CommandId.PAUSE, "Pause", "Compatible media session/action required", listOf("pause", "pause music")),
         CommandSpec(CommandId.NEXT_TRACK, "Next track", "Compatible media session/action required", listOf("next track")),
         CommandSpec(CommandId.PREVIOUS_TRACK, "Previous track", "Compatible media session/action required", listOf("previous track")),
-        CommandSpec(CommandId.TUNE_FM, "Tune FM", "Verified radio adapter and measured regional band/step required", listOf("tune fm to {frequency}"), "{frequency}"),
-        CommandSpec(CommandId.SEEK_NEXT, "Next station", "Verified radio adapter required", listOf("next station")),
-        CommandSpec(CommandId.SEEK_PREVIOUS, "Previous station", "Verified radio adapter required", listOf("previous station")),
+        CommandSpec(CommandId.OPEN_RADIO, "Open radio", "Installed com.nwd.radio activity required", listOf("open radio", "launch radio", "start radio")),
+        CommandSpec(CommandId.TUNE_FM, "Tune FM", "87.5-108.0 MHz; converted to the nearest 10 kHz", listOf("tune fm to {frequency}", "tune to fm {frequency}", "tune to {frequency} fm"), "{frequency}"),
+        CommandSpec(CommandId.SEEK_NEXT, "Next station", "Verified search key 5", listOf("next station", "search next station", "find the next fm station", "tune to the next station")),
+        CommandSpec(CommandId.SEEK_PREVIOUS, "Previous station", "Verified search key 6", listOf("previous station", "search previous station", "find the previous station")),
+        CommandSpec(CommandId.MUTE_RADIO, "Mute radio", "Radio mute broadcast request", listOf("mute radio", "mute the radio", "silence the radio")),
+        CommandSpec(CommandId.UNMUTE_RADIO, "Unmute radio", "Radio unmute broadcast request", listOf("unmute radio", "restore radio sound", "turn radio sound back on")),
+        CommandSpec(CommandId.AUTO_MEMORY_SCAN, "Automatic memory scan", "Verified radio key 46", listOf("scan and save stations", "automatically store radio stations", "run automatic station memory", "find and save available stations")),
+        CommandSpec(CommandId.RADIO_INTRO_SCAN, "Radio intro scan", "Verified radio key 61", listOf("start radio intro scan", "preview radio stations", "start station preview")),
         CommandSpec(CommandId.START_LISTENING, "Start listening", "Installed offline engine/model and microphone permission required", listOf("start listening")),
         CommandSpec(CommandId.STOP_LISTENING, "Stop listening", "Real capture lifecycle required", listOf("stop listening")),
         CommandSpec(CommandId.HELP, "Help", "Supported command list; voice response not installed", listOf("help", "list commands")),
@@ -94,7 +100,7 @@ object ConfigurationValidator {
                 require(placeholders == listOfNotNull(spec.placeholder)) { "Keep the required placeholder: ${spec.placeholder ?: "none"}" }
                 require(alias.count { it == '{' } == placeholders.size && alias.count { it == '}' } == placeholders.size) { "Malformed placeholder" }
                 if (spec.placeholder != null) require(spec.placeholder in alias.split(" ")) { "Placeholder must be a separate word" }
-                require(seen.none { overlaps(it, alias) }) { "Alias collision: $alias" }
+                require(seen.none { aliasesConflict(it, alias) }) { "Alias collision: $alias" }
                 seen += alias
             }
         }
@@ -124,5 +130,13 @@ object ConfigurationValidator {
             }
         }
         return false
+    }
+
+    internal fun aliasesConflict(first: String, second: String): Boolean {
+        val aliases = setOf(first, second)
+        val reservedRadioLaunch = aliases.any { it in setOf("open radio", "launch radio") } &&
+            aliases.any { it in setOf("open {app}", "launch {app}") }
+        val tuneWordOrders = aliases == setOf("tune to fm {frequency}", "tune to {frequency} fm")
+        return !reservedRadioLaunch && !tuneWordOrders && overlaps(first, second)
     }
 }

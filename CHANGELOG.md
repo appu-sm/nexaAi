@@ -2,6 +2,12 @@
 
 ## 0.1.0 - In development
 
+- Milestone 4: integrate the explicit built-in radio launch and verified
+    frequency/key/mute broadcasts through the existing deterministic command
+    pipeline. Add distinct next/previous search, AMS and INTRO commands, bounded
+    FM conversion, truthful request-only responses and host tests. K2501
+    installed-APK receiver access and tuner behavior remain unverified.
+
 - Fix completed Vosk utterances being displayed as partials and discarded before
     an empty trailing final result. A nonempty endpoint result now ends capture
     and reaches the existing validated command pipeline once; partials remain

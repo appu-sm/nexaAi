@@ -30,6 +30,21 @@ class CommandParserTest {
         }
     }
 
+    @Test fun radioPhrasesResolveToDistinctTypedCommands() {
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.OPEN_RADIO)), parse("Open radio"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.TuneFm(java.math.BigDecimal("98.3"))), parse("Tune to FM 98.3"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.TuneFm(java.math.BigDecimal("101.1"))), parse("Tune to 101.1 FM"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.SEEK_NEXT)), parse("Find the next FM station"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.SEEK_PREVIOUS)), parse("Find the previous station"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.MUTE_RADIO)), parse("Mute the radio"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.UNMUTE_RADIO)), parse("Restore radio sound"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.AUTO_MEMORY_SCAN)), parse("Scan and save stations"))
+        assertEquals(ParseResult.Resolved(AssistantCommand.Action(CommandId.RADIO_INTRO_SCAN)), parse("Preview radio stations"))
+        assertTrue(parse("Tune to 120 FM") is ParseResult.Resolved)
+        assertTrue(parse("Increase frequency") !is ParseResult.Resolved)
+        assertTrue(parse("Change the radio mode") is ParseResult.Rejected)
+    }
+
     @Test fun rejectsInvalidParametersAndUnknownApps() {
         listOf("-1", "101", "30.5", "lots", "9999999999999999999").forEach {
             assertTrue(parse("set volume to $it percent") is ParseResult.Rejected)

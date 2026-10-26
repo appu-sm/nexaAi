@@ -170,7 +170,9 @@ class CommandDispatcher(
         CommandId.SET_VOLUME, CommandId.VOLUME_UP, CommandId.VOLUME_DOWN, CommandId.MUTE, CommandId.UNMUTE -> volume
         CommandId.LAUNCH_APP, CommandId.GO_HOME -> apps
         CommandId.PLAY, CommandId.PAUSE, CommandId.NEXT_TRACK, CommandId.PREVIOUS_TRACK -> media
-        CommandId.TUNE_FM, CommandId.SEEK_NEXT, CommandId.SEEK_PREVIOUS -> radio
+        CommandId.OPEN_RADIO, CommandId.TUNE_FM, CommandId.SEEK_NEXT, CommandId.SEEK_PREVIOUS,
+        CommandId.MUTE_RADIO, CommandId.UNMUTE_RADIO, CommandId.AUTO_MEMORY_SCAN,
+        CommandId.RADIO_INTRO_SCAN -> radio
         CommandId.START_LISTENING, CommandId.STOP_LISTENING -> listening
         else -> null
     }

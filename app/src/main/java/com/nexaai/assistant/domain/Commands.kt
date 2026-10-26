@@ -35,7 +35,11 @@ class RuleBasedCommandParser {
     fun parse(transcript: String, configuration: Configuration, apps: List<AllowedApp>): ParseResult {
         val text = normalizeAlias(transcript)
         if (text.length !in 1..300) return invalid("Command must be 1-300 characters")
-        val matches = configuration.commands.flatMap { definition ->
+        val exactMatches = configuration.commands.flatMap { definition ->
+            definition.aliases.filter { commandPlaceholderPattern.find(it) == null && it == text }
+                .map { definition to null }
+        }
+        val matches = if (exactMatches.isNotEmpty()) exactMatches else configuration.commands.flatMap { definition ->
             definition.aliases.mapNotNull { alias ->
                 val parts = commandPlaceholderPattern.find(alias)
                 val pattern = if (parts == null) Regex(Regex.escape(alias)) else Regex(

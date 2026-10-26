@@ -47,6 +47,10 @@ service, root, arbitrary shell execution or hidden vendor API is used.
 - Intent-scoped launcher/home queries support installed-app selection on Android
 	11+. No `QUERY_ALL_PACKAGES`. Only user-allowlisted, installed, launchable apps
 	may open; app IDs are not inferred from transcripts.
+- Radio integration adds a single package-visibility entry for `com.nwd.radio`.
+	It launches the explicit radio activity and sends broadcasts scoped to that
+	package. No privileged permission is requested or assumed; receiver access and
+	actual tuner behavior must be tested from the installed NexaAI APK.
 - Media requires optional notification-listener special access. Android's grant
 	is broader than media alone; review the system disclosure. NexaAI's listener
 	does not override notification-content callbacks, inspect contents, log

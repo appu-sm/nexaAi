@@ -1,7 +1,7 @@
 # Command Catalogue
 
 Milestone 2 added typed deterministic execution; Milestone 3 adds push-to-talk
-input without changing the command catalogue. Command configuration is preserved,
+input and Milestone 4 adds radio integration. Command configuration is preserved,
 and core execution requires no LLM or networking.
 `CommandCatalogue` in the data layer owns the complete seed data. Alias placeholders are fixed
 by command type, not a mechanism to add arbitrary parameters or actions.
@@ -19,9 +19,14 @@ by command type, not a mechanism to add arbitrary parameters or actions.
 | PAUSE | pause; pause music | Compatible session/action |
 | NEXT_TRACK | next track | Compatible session/action |
 | PREVIOUS_TRACK | previous track | Compatible session/action |
-| TUNE_FM | tune fm to {frequency} | Verified adapter and tuner-specific band/step |
-| SEEK_NEXT | next station | Verified adapter |
-| SEEK_PREVIOUS | previous station | Verified adapter |
+| OPEN_RADIO | open radio; launch radio; start radio | Explicit `com.nwd.radio/.home_horizontalActivity` launch |
+| TUNE_FM | tune fm to {frequency}; tune to fm {frequency}; tune to {frequency} fm | 87.5-108.0 MHz; nearest 10 kHz, decimal `HALF_UP`; request only |
+| SEEK_NEXT | next station; search next station; find the next FM station; tune to the next station | `ACTION_TEST_KEY`, key 5; station search request |
+| SEEK_PREVIOUS | previous station; search previous station; find the previous station | `ACTION_TEST_KEY`, key 6; station search request |
+| MUTE_RADIO | mute radio; mute the radio; silence the radio | `ACTION_SET_MUTE`, `extra_mute=true`; request only |
+| UNMUTE_RADIO | unmute radio; restore radio sound; turn radio sound back on | `ACTION_SET_MUTE`, `extra_mute=false`; request only |
+| AUTO_MEMORY_SCAN | scan and save stations; automatically store radio stations; run automatic station memory; find and save available stations | `ACTION_TEST_KEY`, key 46 (AMS); request only |
+| RADIO_INTRO_SCAN | start radio intro scan; preview radio stations; start station preview | `ACTION_TEST_KEY`, key 61 (INTRO); request only |
 | START_LISTENING | start listening | Installed engine/model, microphone permission |
 | STOP_LISTENING | stop listening | Unsupported as a command; use the visible push-to-talk Finish/Cancel control |
 | HELP | help; list commands | Enabled aliases with runtime limitations; visible text and optional offline summary |
@@ -30,8 +35,10 @@ by command type, not a mechanism to add arbitrary parameters or actions.
 
 Alias edits must be nonempty, bounded and unique after case/whitespace
 normalization. Alias collisions must be rejected before persistence, including
-aliases belonging to disabled commands. Fixed phrases overlapping parameter
-templates must not make interpretation ambiguous. Unknown IDs and extra JSON
+aliases belonging to disabled commands. Exact aliases take precedence over
+parameter templates for the two reserved radio-launch phrases; the two FM word
+orders are separate numeric templates. Other overlapping aliases are rejected.
+Unknown IDs and extra JSON
 fields must be rejected; no arbitrary package names or intents are executable.
 
 The implemented editor permits 1-12 aliases per command, each 1-100 characters,
@@ -41,9 +48,10 @@ Enabled flags and aliases apply without restarting. Matching is exact after
 case/whitespace normalization; punctuation is not silently removed. All matching
 templates, including disabled ones, participate in ambiguity detection. Partial
 or fuzzy matches never execute. Percentages outside 0-100, non-integers and
-missing parameters are invalid. Positive decimal FM syntax additionally requires
-a verified adapter/band/step before tuning; production tune/seek are unsupported
-and never reach hardware. No default regional band is invented.
+missing parameters are invalid. FM frequencies are limited to the configured
+87.5-108.0 MHz range and rounded to the nearest 10 kHz using `HALF_UP`. The
+standard range is an implementation configuration, not a measured regional tuner
+plan. Intent dispatch does not prove receiver delivery or tuner state.
 
 Typed Home input accepts aliases such as `help`: Interpret, then Execute or Cancel.
 Interpretation checks support without executing hardware actions. Unsupported or
@@ -82,8 +90,8 @@ test actual volume using Home. No stream selector is exposed without mixer evide
 
 There is deliberately no force-stop command. A normal APK cannot promise to
 force-stop other applications. Supported alternatives are pause or home where available.
-The current production `CommandRuntime` constructs `UnsupportedRadioController`;
-radio phrases never invoke a device controller in this build. Dispatcher tests use
-an injected fake controller and test band only; they neither verify device radio
-behavior nor change the production adapter. No regional FM band is assumed before
-actual tuner evidence is available.
+The production runtime uses `VerifiedRadioController` and `AndroidRadioDevice`.
+The adapter uses the explicit radio activity, frequency action/extra, key 5/6/46/61,
+and mute boolean action/extra. Local tests verify outgoing intents and request
+mapping; they do not prove the normal APK is permitted by the receiver or that the
+tuner completed an operation. All radio voice phrases above are available offline.

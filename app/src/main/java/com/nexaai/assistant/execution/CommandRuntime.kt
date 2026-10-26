@@ -10,12 +10,13 @@ class CommandRuntime(
     val appDevice: AppDevice,
     volume: VolumeController,
     media: MediaController,
+    radio: RadioController,
 ) {
     val dispatcher = CommandDispatcher(
         configuration = { ExecutionConfiguration(repository.snapshots.first(), allowlist.apps()) },
         volume = volume,
         apps = AllowlistedAppLauncher(appDevice, allowlist::apps),
         media = media,
-        radio = UnsupportedRadioController(),
+        radio = radio,
     )
 }

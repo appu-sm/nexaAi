@@ -27,7 +27,8 @@ class NexaAiApplication : Application() {
     val repository by lazy { ConfigurationRepository(store) }
     val commandRuntime by lazy {
         CommandRuntime(repository, AppAllowlistRepository(store), AndroidAppDevice(this),
-            VerifiedVolumeController(AndroidVolumeDevice(this)), SessionMediaController(AndroidMediaDevice(this)))
+            VerifiedVolumeController(AndroidVolumeDevice(this)), SessionMediaController(AndroidMediaDevice(this)),
+            VerifiedRadioController(AndroidRadioDevice(this)))
     }
     val speechEngine by lazy { VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15")) }
     val speechModelInstaller by lazy { VoskModelInstaller(filesDir, contentResolver) }

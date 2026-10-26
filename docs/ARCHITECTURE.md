@@ -107,12 +107,15 @@ ViewModel coroutines publish immutable UI state on main. Capability refresh is
 explicit; execution always rechecks, including permission revocation. Development
 transcripts, results and tokens remain in memory only.
 
-The current production `CommandRuntime` constructs `UnsupportedRadioController`.
-The dispatcher accepts an injected `RadioController`, which permits fake-band
-tests, but there is no production radio implementation in this source tree. The
-reported target radio behavior is not altered by the speech milestone and is not
-claimed by this build. Voice radio phrases therefore receive the same truthful
-unsupported result as typed commands.
+The production `CommandRuntime` receives `VerifiedRadioController`, backed by
+`AndroidRadioDevice`. `RadioProtocol` owns the package, component, action/extra
+strings and key codes. The explicit activity launch catches a missing activity;
+Android security failures are returned by the existing dispatcher boundary.
+Broadcasts are package-scoped and asynchronous, so success means only that the
+local request was sent; receiver delivery and tuner state are not confirmed.
+The controller validates 87.5-108.0 MHz and converts decimal MHz to 10 kHz units
+using `HALF_UP`. Host tests cover intent payloads and controller mappings, not
+K2501 receiver permissions or radio behavior.
 
 ## Milestone 3 offline speech
 

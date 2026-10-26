@@ -59,7 +59,7 @@ class ShellUiTest {
         compose.onNodeWithTag("alias_error").assertTextContains("Alias collision", substring = true)
     }
 
-    @Test fun developmentCommandsPreviewCancelExecuteAndReportUnsupported() {
+    @Test fun developmentCommandsPreviewCancelAndValidateRadioFrequencies() {
         compose.waitUntil(10_000) {
             compose.onAllNodesWithTag("command_input").fetchSemanticsNodes().any { node ->
                 !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
@@ -88,8 +88,17 @@ class ShellUiTest {
         compose.onNodeWithTag("command_input").performScrollTo().performTextReplacement("tune fm to 98.1")
         compose.onNodeWithTag("interpret_command").performScrollTo().performClick()
         compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("execute_command").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        compose.onNodeWithTag("execute_command").assertIsEnabled()
+        compose.onNodeWithTag("cancel_command").performScrollTo().performClick()
+        compose.onNodeWithTag("command_input").performScrollTo().performTextReplacement("tune fm to 120")
+        compose.onNodeWithTag("interpret_command").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
             compose.onAllNodesWithTag("command_result").fetchSemanticsNodes().any { node ->
-                node.config[androidx.compose.ui.semantics.SemanticsProperties.Text].any { it.text.startsWith("Unsupported:") }
+                node.config[androidx.compose.ui.semantics.SemanticsProperties.Text].any { it.text.startsWith("InvalidParameters:") }
             }
         }
         compose.onNodeWithTag("execute_command").assertIsNotEnabled()
