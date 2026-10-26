@@ -155,9 +155,9 @@ none qualifies. It never installs voice data or falls back to a cloud engine. Th
 persisted TTS switch defaults off; `QUEUE_FLUSH` replaces any ongoing utterance.
 Detailed results remain visible if speech is disabled or unavailable.
 
-The microphone permission is requested only from the Home mic action. No foreground
-service, wake word or boot listener was added. Leaving Home or backgrounding the
-activity cancels capture; ViewModel cleanup releases the native model off main.
+The original push-to-talk route requests microphone permission from Home and
+cancels capture when leaving Home or backgrounding the activity. The hands-free
+extension below shares that runtime rather than creating a competing recognizer.
 Audio and transcripts are not logged, stored or uploaded. Host fakes cover
 coordinator/dispatcher semantics; they do not verify model quality, actual TTS
 offline behavior or the head unit.
@@ -175,3 +175,53 @@ References: [foreground services](https://developer.android.com/develop/backgrou
 [microphone permission](https://developer.android.com/training/permissions/requesting),
 [DataStore](https://developer.android.com/topic/libraries/architecture/datastore),
 [package visibility](https://developer.android.com/training/package-visibility).
+
+## Requested Milestone 4 Hands-Free Extension
+
+`NexaAiApplication` now owns one coordinator, recognizer/model cache and speech
+output; ViewModels observe them without destroying a live foreground session.
+`HandsFreeControl` persists the existing wake flags and requests a nonexported
+`HandsFreeService` only after an explicit visible-app action. Saved/imported flags
+are preferences, not permission to start recording. There is no boot receiver or
+sticky service restart. No duplicate state machine or hardware controller is added.
+
+```text
+Explicit opt-in -> microphone permission -> microphone foreground service
+    -> Initializing -> WaitingForWakeWord (sherpa keyword inference only)
+    -> close wake AudioRecord -> WakeWordDetected -> Listening (existing Vosk)
+    -> Processing -> Recognized -> existing prepare/revalidate/execute
+    -> Completed -> optional SpeakingResponse (await offline TTS completion)
+    -> 350 ms cooldown -> WaitingForWakeWord
+```
+
+The existing atomic session gate blocks parallel push-to-talk/import/hands-free.
+Wake inference emits no transcript into the command path. Only the final ASR text
+uses the existing exact parser/validator/single-use dispatcher; ordinary keyword
+no-match frames and partial recognition never execute. Vosk capture is bounded to
+15 seconds, with a 16-second coordinator deadline. Silence/timeouts rearm safely;
+model, audio or TTS failures stop hands-free with `VoiceState.Error`. Manual retry
+is required; there is no busy retry loop. Cancellation is checked before dispatch;
+an already-sent hardware action cannot be undone.
+
+Capture and inference run on IO. Awaiting keyword detection closes its recorder
+before returning, so Vosk creates a fresh capture without replaying wake frames.
+TTS has utterance-ID completion/error/stop callbacks, a 20-second deadline and
+transient-may-duck focus. No recorder runs during spoken responses. Playback/focus
+failure stops hands-free rather than resuming into uncertain playback. Wake listening
+does not seize permanent audio focus from radio/navigation. API 29+ recorder silencing
+stops capture and discards command audio; API 28 contention behavior needs target tests.
+
+Service Stop/destruction cancels capture immediately and releases both native models
+off main after the session unwinds. Foreground navigation/activity recreation keeps
+an explicitly enabled service alive; push-to-talk still stops on lifecycle loss.
+Permission denial, foreground-start exceptions, and a 10-second startup watchdog
+surface useful errors with push-to-talk fallback. Live configuration disabling the
+assistant or wake mode, or changing the wake phrase, stops the service. OS process death and vendor sleep are
+not bypassed; no wake lock or restart receiver is introduced.
+
+`VoskModelInstaller` retains its original call API and now accepts required-file
+and root-validator parameters for the separate keyword package. Both import routes
+share bounded staging, traversal rejection and safe replacement. See Models for
+licenses and exact assets. Import validates a single English BPE keyword without
+requiring the current setting to match; detector initialization enforces a match
+with the saved configurable wake phrase. Text changes do not regenerate tokens.

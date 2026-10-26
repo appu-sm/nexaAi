@@ -2,6 +2,19 @@
 
 ## 0.1.0 - In development
 
+- Make the English wake phrase configurable in Settings and portable schema-1
+    configuration. Accept custom single-phrase keyword ZIPs and check their tokens
+    against the saved phrase before hands-free starts. Changing text still requires
+    matching tokenized assets; target acoustic verification remains pending.
+
+- Requested Milestone 4 hands-free extension: real sherpa-onnx `1.12.14` keyword
+    spotting with an explicit Hey Nexa model import, serialized handoff to existing
+    Vosk/command dispatch, awaited offline TTS, microphone foreground service,
+    persistent opt-in controls and notification Stop. Add fake-audio/lifecycle/
+    permission/service regressions and model/device setup documentation. Preserve
+    verified radio mappings. No acoustic, resource or screen-off device verification
+    is claimed; overlay, automatic boot/restart and LLM remain deferred.
+
 - Milestone 4: integrate the explicit built-in radio launch and verified
     frequency/key/mute broadcasts through the existing deterministic command
     pipeline. Add distinct next/previous search, AMS and INTRO commands, bounded

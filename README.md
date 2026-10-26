@@ -29,9 +29,9 @@ Milestone 0 establishes a buildable Android baseline. Milestone 1 implements six
 screens, persistent versioned configuration and an editable command catalogue.
 Milestone 2 adds deterministic command execution and safe Android controls.
 Milestone 3 adds offline push-to-talk recognition and optional offline TTS.
-Milestone 4 adds the verified NexaAI radio request adapter; K2501 APK-level
-receiver/permission behavior remains a device acceptance gate. Startup and wake
-word remain separate milestones.
+Milestone 4 includes the verified radio request adapter and the requested offline
+wake-word/hands-free extension. K2501 APK-level receiver access and real wake-word
+performance remain device acceptance gates. Overlay and boot startup are deferred.
 An enabled alias is not proof of hardware support. Do not use this
 development build as an operational driving assistant.
 
@@ -57,13 +57,21 @@ hardware actions. Test actual controls only while stationary.
     playback changes are not verified.
 - Push-to-talk uses Vosk locally after a user imports the model ZIP; only final
     transcripts reach the existing deterministic command dispatcher. No model is bundled.
+- Hands-free uses real sherpa-onnx `1.12.14` keyword spotting, not a continuous
+    Vosk transcription loop. Import the English keyword model configured for
+    your English wake phrase, save the same phrase in Settings > Listening
+    (default **Hey Nexa**), explicitly enable the listening switch, grant microphone access,
+    then speak the wake phrase, pause for command capture, and say a configured
+    command. See the exact [model preparation steps](docs/MODELS.md#hey-nexa-keyword-model).
+    Stop with the switch, Stop icon, or foreground notification action.
 - Radio commands launch the explicit `com.nwd.radio` activity or send its
     package-scoped frequency, key and mute broadcasts. Supported actions are tune,
     next/previous search, mute/unmute, AMS and INTRO. Broadcast responses confirm
     dispatch requests only; target APK permissions, receiver delivery and tuner
     effects remain unverified on the K2501.
 - START/STOP_LISTENING command aliases remain unsupported; listening is controlled
-    by the visible Home push-to-talk button. Help/repeat remain text-first.
+    by push-to-talk or the hands-free controls. Help/repeat use the existing
+    command pipeline and optional offline spoken results.
 
 Preferences schema 1 migrates the early `display_name` key when present. Missing
 data uses safe defaults; corrupt data shows recovery status; future schema
@@ -74,8 +82,11 @@ alias collisions are rejected. All 24 catalogue IDs must appear exactly once.
 
 No speech model is bundled. Vosk Android `0.3.47` is pinned; model setup is manual
 and documented in [Models](docs/MODELS.md). Microphone permission is requested only
-after tapping the Home mic button. Internet, overlay, boot, foreground-service and
-notification-posting permissions remain absent. Normal `MODIFY_AUDIO_SETTINGS` is
+after tapping the Home mic or enabling hands-free. Hands-free declares microphone
+foreground-service permissions and requests notification permission on Android 13+.
+Notification denial does not grant hidden recording: Android's foreground-service
+task UI still applies, and NexaAI retains an in-app Stop control. Internet, overlay
+and boot permissions remain absent. Normal `MODIFY_AUDIO_SETTINGS` is
 declared. Media uses a
 system-protected notification-listener service with optional special access:
 the access is broad, but NexaAI does not inspect or store notification contents.
@@ -83,8 +94,10 @@ No `QUERY_ALL_PACKAGES`, arbitrary shell, user-supplied intents or inferred pack
 names are used. Radio uses one package visibility entry for `com.nwd.radio`, with
 no privileged permission. Push-to-talk code is implemented, but offline
 recognition and TTS have not been physically verified. Radio dispatch and actual
-tuner behavior still require the installed APK and K2501; wake word and automatic
-startup remain unavailable.
+tuner behavior still require the installed APK and K2501. Hands-free requires both
+local models; it fails visibly back to push-to-talk when initialization fails.
+There is no automatic listening after reboot or process death, even when the last
+saved preference was hands-free. Re-enable it explicitly from the visible app.
 
 ## Verification and troubleshooting
 
@@ -92,17 +105,22 @@ Automated results and manual acceptance gates are tracked in
 [the test plan](docs/TEST_PLAN.md). Host JVM/Compose tests cannot establish
 K2501 hardware compatibility. A debug APK is for stationary device testing.
 
-Host validation: 49 unit/configuration/Compose tests pass; `:app:assembleDebug`,
-`:app:testDebugUnitTest` and `:app:lintDebug` pass. UI tests run
-with Robolectric API 28, not an attached emulator/head unit. The debug APK is about
-93 MiB and packages Vosk ABIs arm64-v8a, armeabi-v7a, x86 and x86_64. Target hardware
-checks remain unperformed; offline model loading, offline voices and OEM controls
-are not verified on the target. See [test results](docs/TEST_PLAN.md).
-the toolchain is intentionally pinned rather than upgraded without testing.
+Host validation covers configuration, Compose, push-to-talk, wake-session ordering,
+fake audio, permission/service failures and radio mappings. UI tests use Robolectric
+API 28, not an attached emulator/head unit. Both native engines package arm64-v8a,
+armeabi-v7a, x86 and x86_64; this does not verify the target ABI. Latest gate results
+are in [the test plan](docs/TEST_PLAN.md). Real keyword/model loading, offline voices,
+OEM controls, screen-off listening, RAM/CPU and power remain unverified on target.
+The toolchain is intentionally pinned rather than upgraded without testing.
 
 - Missing SDK: set `ANDROID_HOME` or an untracked `local.properties`.
 - Dependency resolution failure: check access to Google Maven, Maven Central,
-  and the Gradle distribution server; the first build is not offline.
+    GitHub release assets, and the Gradle distribution server; the first build is not offline.
+- Wake-word model error: prepare the five-file ZIP described in Models, including
+        the actual Hey Nexa BPE tokens. A renamed file or edited phrase is insufficient.
+- Hands-free service/microphone error: stop listening, restore microphone access,
+        and retry while NexaAI is visible. If firmware prevents background listening,
+        leave hands-free off and use push-to-talk. Do not enable automatic restarts.
 - Missing/corrupt speech model: import the official ZIP from the Models screen; no
     automatic download or online fallback is attempted.
 - Radio unavailable: confirm `com.nwd.radio` is installed and inspect the returned

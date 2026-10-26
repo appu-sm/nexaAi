@@ -20,7 +20,10 @@ class MainActivity : ComponentActivity() {
                     ConfigurationDocuments(contentResolver), (application as NexaAiApplication).commandRuntime,
                     (application as NexaAiApplication).speechEngine,
                     (application as NexaAiApplication).speechModelInstaller,
-                    (application as NexaAiApplication).speechOutput) as T
+                    (application as NexaAiApplication).speechOutput,
+                    (application as NexaAiApplication).voiceCoordinator,
+                    (application as NexaAiApplication).handsFreeControl,
+                    (application as NexaAiApplication).wakeModelInstaller) as T
             }
         }
     }

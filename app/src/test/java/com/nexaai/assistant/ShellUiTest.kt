@@ -59,6 +59,24 @@ class ShellUiTest {
         compose.onNodeWithTag("alias_error").assertTextContains("Alias collision", substring = true)
     }
 
+    @Test fun savesCustomWakePhraseAndRejectsEmptyPhrase() {
+        navigate("SETTINGS")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("save_wake_phrase").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        compose.onNodeWithTag("wake_phrase").performScrollTo().performTextReplacement("")
+        compose.onNodeWithTag("save_wake_phrase").assertIsNotEnabled()
+        compose.onNodeWithTag("wake_phrase").performTextReplacement("Hey Radio")
+        compose.onNodeWithTag("save_wake_phrase").performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Wake phrase saved").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Hands-free: Hey Radio").assertExists()
+        navigate("HOME")
+        navigate("SETTINGS")
+        compose.onNodeWithTag("wake_phrase").assertTextContains("Hey Radio")
+    }
+
     @Test fun developmentCommandsPreviewCancelAndValidateRadioFrequencies() {
         compose.waitUntil(10_000) {
             compose.onAllNodesWithTag("command_input").fetchSemanticsNodes().any { node ->

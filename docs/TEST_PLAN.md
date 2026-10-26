@@ -255,3 +255,100 @@ Manual K2501 checklist (not run in this environment):
 6. Test unsupported frequency “Tune to 120 FM”, an unknown phrase, receiver
 	permission restrictions, airplane mode, and app restart. Confirm no crash and
 	that no completion is claimed without radio feedback.
+
+## Requested Milestone 4 Hands-Free Extension
+
+Automated host checks add to the existing push-to-talk/parser/configuration/radio
+regressions, with no physical audio or model weights in tests:
+
+- `SpeechSessionTest`: idle detector inactivity, initialization error cleanup,
+  one wake/command session, no ordinary/wake transcript dispatch, partial-only
+  nonexecution, silence, coordinator timeout, cancellation before final dispatch,
+  duplicate start rejection, TTS completion barrier, ordered microphone handoff,
+  foreground lifecycle survival and five enable/disable resource cycles.
+- `WakeWordDetectorTest`: missing/mismatched/unsupported keyword files, vocabulary
+  mismatch, injected incompatible native model/ABI, one model load, fake PCM no-match
+  frames, reused buffers, read failures and recorder/inference cleanup.
+- `HandsFreeServiceTest`: denied microphone permission and injected foreground-start
+  SecurityException leave capture inactive, show errors and allow explicit disable.
+- Existing dispatcher tests cover disabled/ambiguous/invalid/unsupported commands;
+  `RadioControllerTest` retains exact component/actions/extras/5/6/46/61/mute tests.
+- Existing API 28 compact/landscape Compose flows remain acceptance gates, as do
+  all Milestone 0-3 host tests. Real recorder/TTS/FGS interaction needs a device.
+
+Required gate: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`.
+The normal APK contains no network permission. Test results establish control-flow
+and payload behavior, not acoustic recognition or actual hardware effects.
+
+Host completion evidence (2026-10-26): **60 tests, zero failures/errors/skips**;
+`:app:assembleDebug` and `:app:lintDebug` passed; lint reports **0 errors and 11
+warnings**. Ten are existing dependency/target/backup warnings; the additional
+`ImplicitSamInstance` warning incorrectly treats `Context.stopService(Intent)`
+as listener removal (Android identifies a service by component, not Intent object
+identity). No lint error was suppressed. `git diff --check` passes. The debug APK
+is approximately **191 MiB**, including both multi-ABI native runtimes but no
+model weights. ABI-specific release optimization is deferred until actual target
+ABI evidence is available. Tests and builds used the pinned toolchain; this host
+needed `-Pkotlin.compiler.execution.strategy=in-process` after a Kotlin daemon
+session error. This flag does not change runtime behavior.
+
+Changed-file inventory for this extension:
+
+- Build/manifest: `settings.gradle.kts`, `app/build.gradle.kts`,
+	`app/src/main/AndroidManifest.xml`.
+- Application wiring: `MainActivity.kt`, `NexaAiApplication.kt` under
+	`app/src/main/java/com/nexaai/assistant/`.
+- Configuration/UI: `data/Configuration.kt`, `ui/AssistantViewModel.kt`,
+	`ui/NexaApp.kt` under the same source package.
+- Speech: `speech/SpeechRecognition.kt`, `speech/VoskSpeechRecognizer.kt`,
+	`speech/AndroidSpeechOutput.kt`, new `speech/SherpaWakeWordDetector.kt` and
+	new `speech/HandsFreeService.kt` under the same source package.
+- Tests under `app/src/test/java/com/nexaai/assistant/`: `SpeechSessionTest.kt`,
+	new `WakeWordDetectorTest.kt`, new `HandsFreeServiceTest.kt`.
+- Documentation: `README.md`, `AGENT.md`, `CHANGELOG.md`, `docs/ARCHITECTURE.md`,
+	`docs/COMMANDS.md`, `docs/DEVICE_COMPATIBILITY.md`, `docs/MODELS.md`,
+	`docs/PRIVACY_AND_PERMISSIONS.md`, `docs/TEST_PLAN.md`.
+
+No radio controller, protocol constant, parser, command dispatcher or hardware
+mapping was modified by this extension.
+
+### Stationary Head-Unit Checklist (Not Run)
+
+1. Record actual Android/API/build, ABI, free storage and available RAM. Install
+	the normal APK and both explicitly prepared models. Start with hands-free off;
+	verify push-to-talk still recognizes a supported alias and microphone stops.
+2. Deny/revoke microphone permission, deny notification permission on API 33+, and
+	test foreground-start restrictions. Confirm useful errors, no stuck enabled UI,
+	no repeated restart attempts, and typed/push-to-talk fallback where permitted.
+3. Enable hands-free while the app is visible. Observe the ongoing notification,
+	privacy indicator where available and waiting state. Say ordinary speech and
+	command aliases without the wake phrase: no hardware command should execute.
+4. Say the saved wake phrase (default Hey Nexa), pause, then a valid command. Check final-only single execution.
+	Test repeated wakes, partial phrases, silence, 15-second capture timeout, empty
+	results, invalid frequency/volume, disabled commands and ambiguous aliases.
+5. With installed offline TTS enabled, test long/error/interrupted responses and
+	another wake during playback. Detection must not resume until playback ends;
+	audio-focus/playback failures must stop hands-free visibly, with manual retry.
+6. Disable with each in-app Stop/switch and notification Stop during waiting,
+	recognition and playback. Verify microphone release, no delayed dispatch, and
+	no retained native-model growth over repeated enable/disable cycles.
+7. Navigate screens, rotate/recreate activity, background/foreground, switch to
+	radio/navigation, introduce microphone contention and revoke permission. Record
+	API 28 versus 29+ silencing behavior. Confirm no competing capture instances.
+8. Disable Wi-Fi/mobile data before launching NexaAI; repeat wake/command/TTS
+	flows without network access. Missing models/voices must not trigger a download.
+9. Test screen off/on, sleep/wake, OS task stop/process death, reboot and ignition
+	cycles. No automatic listening after process death or reboot is expected.
+	Record firmware kills/suspends honestly; use push-to-talk if persistence fails.
+10. Repeat the radio checklist above: launch, 9830 tuning extra, search 5/6, AMS
+	 46, INTRO 61 and mute/unmute, observing tuner behavior separately from requests.
+11. Measure cold/warm latency, false accepts/hour, missed wakes in cabin noise,
+	 CPU/PSS/RSS over a long session, power/thermal effects and radio/navigation
+	 interference. Compare with push-to-talk before declaring 2 GB suitability.
+12. With hands-free stopped, import a ZIP tokenized for another English phrase
+	and save that phrase in Settings > Listening. Verify the label updates,
+	the setting survives relaunch/export/import, and the new phrase activates
+	command capture. A mismatching phrase must fail before microphone capture;
+	malformed/multiple keyword lines must still fail import. Importing a changed
+	phrase configuration during a session must stop hands-free, not silently
+	keep listening for the old phrase. Repeat on compact and landscape layouts.

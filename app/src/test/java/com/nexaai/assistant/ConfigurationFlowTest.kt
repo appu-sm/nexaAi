@@ -60,11 +60,12 @@ class ConfigurationFlowTest {
         val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
             val first = ConfigurationRepository(PreferenceDataStoreFactory.create(scope = firstScope, produceFile = { file }))
-            first.update { it.copy(settings = it.settings.copy(displayName = "Persistent", assistantEnabled = false)) }
+            first.update { it.copy(settings = it.settings.copy(displayName = "Persistent", assistantEnabled = false, wakePhrase = "Hey Radio")) }
             firstScope.coroutineContext[Job]!!.cancelAndJoin()
             val second = ConfigurationRepository(PreferenceDataStoreFactory.create(scope = secondScope, produceFile = { file }))
             assertEquals("Persistent", second.snapshots.first().configuration.settings.displayName)
             assertFalse(second.snapshots.first().configuration.settings.assistantEnabled)
+            assertEquals("Hey Radio", second.snapshots.first().configuration.settings.wakePhrase)
         } finally {
             firstScope.coroutineContext[Job]!!.cancelAndJoin()
             secondScope.coroutineContext[Job]!!.cancelAndJoin()
@@ -86,7 +87,7 @@ class ConfigurationFlowTest {
         val collector = launch(Dispatchers.Unconfined) { viewModel.state.collect { } }
         try {
             withTimeout(10_000) { viewModel.state.first { it.snapshot.ready } }
-            val imported = Configuration(settings = AssistantSettings(displayName = "Imported", assistantEnabled = false))
+            val imported = Configuration(settings = AssistantSettings(displayName = "Imported", assistantEnabled = false, wakePhrase = "Hello Cabin"))
             documents.write(Uri.fromFile(document), imported)
             assertEquals(imported, documents.read(Uri.fromFile(document)))
             viewModel.importDocument(Uri.fromFile(document))

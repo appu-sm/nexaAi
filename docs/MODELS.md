@@ -8,7 +8,7 @@ The model is loaded only on explicit speech initialization and reused for sessio
 | --- | --- | --- |
 | Speech | Vosk Android `0.3.47` + `vosk-model-small-en-us-0.15` | Runtime integrated; model must be imported; device verification pending |
 | Optional speech | Whisper.cpp tiny | Deferred pending measured latency and memory |
-| Wake word | No selected engine | Unavailable; phrase text does not train a detector |
+| Wake word | sherpa-onnx Android `1.12.14`, English GigaSpeech KWS 3.3M 2024-01-01 | Real keyword runtime integrated; explicit Hey Nexa ZIP import required; target unverified |
 | Local LLM | No selected runtime/model | Off; not a release requirement |
 | TTS | Android TextToSpeech | Integrated; selects installed English voices without the network-synthesis feature; target availability unverified |
 
@@ -64,3 +64,114 @@ K2501 cold/warm latency, peak RAM, CPU, power impact, and radio/navigation
 interference are all unmeasured. A small parameter count or file size is not
 evidence that a model fits in a 2 GB head unit. Do not run STT and an LLM together
 without actual measurements. The no-LLM route remains the default.
+
+## Hey Nexa keyword model
+
+The runtime is `com.k2fsa:sherpa-onnx:1.12.14@aar`, resolved from the
+[official versioned release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.12.14).
+The downloaded AAR SHA-256 was checked against the release asset metadata:
+`5a629a899888cb2760e245d9d5340858b15591aee7fa13644cf57199ff2829b9`.
+sherpa-onnx is [Apache-2.0](https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.14/LICENSE);
+its ONNX Runtime backend is MIT. Preserve upstream licenses and dependency notices
+when redistributing the runtime. No key, account, online activation or runtime
+network permission is required. Only build dependencies are fetched by Gradle.
+
+Use `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01`, not a general ASR
+or Chinese keyword model. The upstream
+[model card](https://modelscope.cn/models/pkufool/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01)
+declares Apache License 2.0, English GigaSpeech XL training and BPE modeling.
+[Official model/tokenizer instructions](https://k2-fsa.github.io/sherpa/onnx/kws/pretrained_models/index.html#sherpa-onnx-kws-zipformer-gigaspeech-3-3m-2024-01-01-english)
+provide the dated archive. No weights are bundled or downloaded by NexaAI.
+
+On a trusted computer, explicitly download the
+[dated model archive](https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2),
+extract it and prepare a ZIP as follows. These commands are setup instructions,
+not actions performed automatically by the app:
+
+Run these commands from the extracted model's root, not `test_wavs`, using the
+archive's original nonempty `bpe.model` and `tokens.txt`. Empty tokenizer files
+cause SentencePiece's `unk is not defined` error. Replace `HEY NEXA` below with
+your desired English wake phrase before tokenization.
+
+```sh
+python3 -m venv "$HOME/.venvs/nexa-model-tools"
+. "$HOME/.venvs/nexa-model-tools/bin/activate"
+python -m pip install sherpa-onnx==1.12.26 click==8.1.8 sentencepiece==0.2.1
+cd sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
+printf 'HEY NEXA\n' > nexa-keywords-raw.txt
+sherpa-onnx-cli text2token --tokens tokens.txt --tokens-type bpe \
+	--bpe-model bpe.model nexa-keywords-raw.txt nexa-keywords.txt
+mkdir nexa-wake
+cp encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx nexa-wake/encoder.onnx
+cp decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx nexa-wake/decoder.onnx
+cp joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx nexa-wake/joiner.onnx
+cp tokens.txt nexa-wake/tokens.txt
+cp nexa-keywords.txt nexa-wake/keywords.txt
+zip -j nexa-wake.zip nexa-wake/*
+```
+
+The virtual environment keeps these tools separate from the system-managed Python
+and avoids Linux's `externally-managed-environment` error. Do not use `sudo pip`
+or `--break-system-packages`. If virtual-environment creation reports that
+`ensurepip` is unavailable, install your distribution's `python3-venv` package
+first (Debian/Ubuntu: `sudo apt install python3-venv`), then retry. In a new
+terminal, run the activation command again before using `sherpa-onnx-cli`.
+The host tokenizer is pinned separately to `1.12.26` because `1.12.14` is not
+available for every host Python/package index. It generates BPE text using the
+downloaded model's own vocabulary; the Android runtime remains `1.12.14`.
+`click` supplies the CLI and `sentencepiece` supplies BPE tokenization; install
+both explicitly because the sherpa package does not declare all CLI dependencies.
+
+Transfer the ZIP locally and choose **Models > Choose wake-word ZIP**. The import
+uses the existing bounded, traversal-safe staging/backup installer. Storage is
+private `$filesDir/sherpa-kws-english`. Required files are `encoder.onnx`,
+`decoder.onnx`, `joiner.onnx`, `tokens.txt` and `keywords.txt`. Only one keyword
+line is accepted, without score/threshold/label overrides. Its BPE tokens must
+exist in the supplied vocabulary and reconstruct a valid English phrase. ZIP
+import validates that structure independently of the currently saved phrase.
+Before enabling hands-free, stop listening and save the same phrase in
+**Settings > Listening > Wake phrase > Save wake phrase** (default: `Hey Nexa`).
+Hands-free initialization compares the tokens with that setting, ignoring case,
+and rejects a mismatch with both phrases in the error. Missing files and
+incompatible models produce a visible error. Structural
+validation is not a cryptographic authenticity check: import only trusted assets.
+Limits: 160 MiB expanded ZIP, 20,000 entries, 40 MiB per required model file,
+1 MiB vocabulary and 4 KiB keywords. Incompatible native initialization is reported;
+malicious native model parsers are not sandboxed, so do not import untrusted models.
+
+The underlying engine supports open-vocabulary keywords through tokenization,
+without acoustic retraining. The saved wake phrase accepts 1-80 English letters
+with single spaces, apostrophes or hyphens between letter groups. Changing it
+does not regenerate or train keyword tokens: import a package tokenized for the
+same phrase. Only one phrase per package is supported; sensitivity overrides are
+not supported. The phrase persists and round-trips through configuration export
+and import. A configuration change to the phrase stops an active hands-free
+session; listening must be enabled explicitly again. Pronunciation and
+false-trigger performance of custom names remain unmeasured.
+
+## Resource Decision
+
+Continuous detection uses the dedicated KWS decoder of a tiny transducer, not the
+Vosk command recognizer. One CPU thread, four active paths, default score 1.5,
+threshold 0.25 and two trailing blanks are fixed; no cosmetic sensitivity slider.
+Quantized upstream files total roughly 5 MiB (not measured RAM). Wake capture uses
+16 kHz mono PCM16, 100 ms frames, reusable 3.2 KiB PCM and 6.4 KiB float arrays,
+and a bounded AudioRecord buffer. The model loads once per enabled session; new
+streams discard old wake audio and new recorders separate wake and command capture.
+Vosk is loaded once alongside KWS for warm command activation; this increases idle
+RAM versus unloading Vosk after every command, and must be measured on the 2 GB unit.
+Both models are released when hands-free ends. No LLM is loaded.
+
+Compared with alternatives, Porcupine requires an access key and a separate
+licensing/setup review; openWakeWord needs additional Android audio/frontend
+integration; PocketSphinx's older Android packaging needs maintenance/ABI review.
+sherpa provides a pinned Android AAR and a small, published English KWS model,
+at the cost of a larger multi-ABI runtime/APK. These are engineering selection
+criteria, not measured comparative benchmarks. No engine was benchmarked on K2501.
+
+Continuous capture/inference costs more power than push-to-talk. Frame size, model
+chunking and the 350 ms post-command cooldown trade latency against CPU/echo safety;
+default thresholds trade false accepts against missed wakes. No low-power,
+accuracy, noise robustness or persistent-screen-off claim is made. Measure PSS/RSS,
+CPU, false accepts per hour, missed wakes, cold/warm latency and radio/navigation
+interference before enabling this in regular use.

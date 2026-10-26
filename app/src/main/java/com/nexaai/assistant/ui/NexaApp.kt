@@ -63,6 +63,16 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var reset by rememberSaveable { mutableStateOf<String?>(null) }
     var microphoneRequestAttempted by rememberSaveable { mutableStateOf(false) }
+    var pendingHandsFree by rememberSaveable { mutableStateOf(false) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        viewModel.setHandsFreeEnabled(true)
+    }
+    val enableHandsFree = {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else viewModel.setHandsFreeEnabled(true)
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importDocument)
     }
@@ -72,13 +82,19 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
     val modelImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::installSpeechModel)
     }
+    val wakeImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::installWakeModel)
+    }
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) viewModel.startVoice() else {
+        if (granted) {
+            if (pendingHandsFree) enableHandsFree() else viewModel.startVoice()
+        } else {
             val activity = context as? Activity
             val permanent = microphoneRequestAttempted && activity != null &&
                 !activity.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
             viewModel.microphonePermissionDenied(permanent)
         }
+        pendingHandsFree = false
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -127,15 +143,43 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                 IconButton(onClick = viewModel::dismissMessage) { Icon(Icons.Default.Close, "Dismiss message") }
                             }
                         }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Hands-free: ${configuration.settings.wakePhrase}", style = MaterialTheme.typography.titleMedium)
+                                Text(if (state.handsFreeEnabled) when (state.voice) {
+                                    is VoiceState.WaitingForWakeWord -> "Waiting for wake word - microphone active"
+                                    is VoiceState.Listening -> "Listening for command"
+                                    VoiceState.SpeakingResponse -> "Speaking - microphone suspended"
+                                    else -> "Hands-free session active"
+                                } else "Stopped")
+                            }
+                            if (state.handsFreeEnabled) IconButton(onClick = { viewModel.setHandsFreeEnabled(false) },
+                                modifier = Modifier.testTag("stop_hands_free")) { Icon(Icons.Default.Stop, "Stop hands-free immediately") }
+                            Switch(state.handsFreeEnabled, { enabled ->
+                                if (!enabled) viewModel.setHandsFreeEnabled(false)
+                                else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) enableHandsFree()
+                                else {
+                                    pendingHandsFree = true
+                                    microphoneRequestAttempted = true
+                                    microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }, enabled = state.handsFreeEnabled || (editable && configuration.settings.assistantEnabled &&
+                                !state.controls.working && state.voice !is VoiceState.Initializing && state.voice !is VoiceState.Listening),
+                                modifier = Modifier.testTag("hands_free_enabled").semantics { contentDescription = "Hands-free enabled" })
+                        }
+                        (state.voice as? VoiceState.Error)?.let {
+                            Text(it.message, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
+                        }
                         NavHost(navController, Destination.HOME.name, Modifier.weight(1f)) {
                             composable(Destination.HOME.name) {
-                                HomeScreen(configuration, state.controls, editable, viewModel::interpretCommand,
+                                HomeScreen(configuration, state.controls, editable, state.handsFreeEnabled, viewModel::interpretCommand,
                                     viewModel::executeCommand, viewModel::cancelCommand, state.voice,
                                     state.speechOutput, state.modelInstalled,
                                     {
                                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                             viewModel.startVoice()
                                         } else {
+                                            pendingHandsFree = false
                                             microphoneRequestAttempted = true
                                             microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
                                         }
@@ -155,9 +199,11 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                             composable(Destination.SETTINGS.name) {
                                 SettingsScreen(configuration.settings, editable, viewModel::setName, viewModel::setAssistantEnabled,
                                     { reset = "settings" }, { importer.launch(arrayOf("application/json", "text/plain")) },
-                                    { exporter.launch("nexaai-configuration.json") }, viewModel::setTtsEnabled, state.speechOutput)
+                                    { exporter.launch("nexaai-configuration.json") }, viewModel::setTtsEnabled, state.speechOutput,
+                                    state.handsFreeEnabled, viewModel::setWakePhrase)
                             }
-                            composable(Destination.MODELS.name) { ModelsScreen(state.modelInstalled, state.voice) {
+                            composable(Destination.MODELS.name) { ModelsScreen(state.modelInstalled, state.voice,
+                                configuration.settings.wakePhrase, state.handsFreeEnabled, { wakeImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
                                 modelImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                             } }
                             composable(Destination.DIAGNOSTICS.name) { DiagnosticsScreen(device, state.controls, state.modelInstalled, state.speechOutput, viewModel::refreshControls) }
@@ -207,12 +253,12 @@ private fun Section(title: String, status: String) {
 }
 
 @Composable
-private fun HomeScreen(configuration: Configuration, controls: CommandUiState, editable: Boolean,
+private fun HomeScreen(configuration: Configuration, controls: CommandUiState, editable: Boolean, handsFree: Boolean,
     interpret: (String) -> Unit, execute: () -> Unit, cancel: () -> Unit,
     voice: VoiceState, speechOutput: SpeechOutputState, modelInstalled: Boolean,
     startListening: () -> Unit, finishListening: () -> Unit, cancelListening: () -> Unit,
     openModels: () -> Unit, openPermissionSettings: () -> Unit) = Page("NexaAI") {
-    val voiceBusy = voice is VoiceState.Initializing || voice is VoiceState.Listening ||
+    val voiceBusy = handsFree || voice is VoiceState.Initializing || voice is VoiceState.Listening ||
         voice is VoiceState.Processing || voice is VoiceState.Recognized || voice is VoiceState.Executing
     val listening = voice is VoiceState.Listening
     Text(configuration.settings.displayName, style = MaterialTheme.typography.titleLarge)
@@ -228,7 +274,7 @@ private fun HomeScreen(configuration: Configuration, controls: CommandUiState, e
     }, Modifier.testTag("assistant_state"))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         FilledIconButton(onClick = if (listening) finishListening else startListening,
-            enabled = configuration.settings.assistantEnabled && (listening || !voiceBusy) && !controls.working,
+            enabled = !handsFree && configuration.settings.assistantEnabled && (listening || !voiceBusy) && !controls.working,
             modifier = Modifier.size(88.dp).testTag("microphone").semantics {
                 contentDescription = if (listening) "Finish voice command" else "Start push-to-talk voice command"
             }) {
@@ -240,7 +286,7 @@ private fun HomeScreen(configuration: Configuration, controls: CommandUiState, e
             Text("Audio is processed locally and not saved.")
         }
     }
-    if (voiceBusy && !listening && voice !is VoiceState.Executing) {
+    if (voiceBusy && !handsFree && !listening && voice !is VoiceState.Executing) {
         TextButton(onClick = cancelListening) { Icon(Icons.Default.Close, null); Text("Cancel") }
     }
     if (!modelInstalled) {
@@ -264,6 +310,12 @@ private fun HomeScreen(configuration: Configuration, controls: CommandUiState, e
         }
         VoiceState.Initializing -> Unit
         VoiceState.Processing -> Unit
+        is VoiceState.WaitingForWakeWord -> {
+            Text("Waiting for wake word", Modifier.testTag("voice_status"))
+            voice.previous?.let { Text("${it.transcript}: ${it.result.message}") }
+        }
+        VoiceState.WakeWordDetected -> Text("Wake word detected")
+        VoiceState.SpeakingResponse -> Text("Speaking response")
     }
     Text(when (speechOutput) {
         SpeechOutputState.Initializing -> "Offline speech output: checking installed voices"
@@ -372,8 +424,10 @@ private fun AliasDialog(definition: CommandDefinition, configuration: Configurat
 @Composable
 private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setName: (String) -> Unit,
     setEnabled: (Boolean) -> Unit, reset: () -> Unit, importConfig: () -> Unit, exportConfig: () -> Unit,
-    setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState) {
+    setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState, handsFree: Boolean, setWakePhrase: (String) -> Unit) {
     var name by rememberSaveable(settings.displayName) { mutableStateOf(settings.displayName) }
+    var wakePhrase by rememberSaveable(settings.wakePhrase) { mutableStateOf(settings.wakePhrase) }
+    val phraseError = runCatching { ConfigurationValidator.validateWakePhrase(wakePhrase.trim()) }.exceptionOrNull()?.message
     Page("Settings") {
         Text("General", style = MaterialTheme.typography.titleLarge)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -385,10 +439,18 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
         Button(onClick = { setName(name) }, enabled = editable && name.trim().isNotEmpty() && name.trim().length <= 40, modifier = Modifier.testTag("save_name")) {
             Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Save name")
         }
-        Text("Offline-only: enforced. No network permission. Confirmation: short (inactive). Haptics and debug logs unavailable; no logs stored.")
-        Section("Listening", "Push-to-talk selected. Engine/model, microphone and recognition tests unavailable (Milestone 3). Timeouts and language/model selection unavailable until an engine is installed.")
-        Text("Wake word off; no detector installed (Milestone 6). Desired phrase: Hey Nexa. Phrase text does not train a detector; sensitivity unavailable.")
-        Section("Startup and service", "Off. No boot receiver, foreground service or background microphone (Milestone 5). Resume listening off. Notification and battery settings are not applicable without a service.")
+        Text("Offline-only: enforced. No network permission. Haptics and debug logs unavailable; no logs stored.")
+        HorizontalDivider()
+        Text("Listening", style = MaterialTheme.typography.titleLarge)
+        OutlinedTextField(wakePhrase, { wakePhrase = it }, label = { Text("Wake phrase") },
+            enabled = editable && !handsFree, singleLine = true, isError = phraseError != null,
+            supportingText = { phraseError?.let { Text(it) } },
+            modifier = Modifier.fillMaxWidth().testTag("wake_phrase"))
+        Button(onClick = { setWakePhrase(wakePhrase) }, enabled = editable && !handsFree && phraseError == null,
+            modifier = Modifier.testTag("save_wake_phrase")) {
+            Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Save wake phrase")
+        }
+        Section("Startup and service", "Hands-free uses a microphone foreground service with an ongoing notification. Automatic startup and resume after reboot or process death are off. Screen-off and firmware sleep behavior are unverified.")
         Section("Overlay", "Off. No overlay implementation or permission requested (Milestone 5). Size, opacity, position and tap controls unavailable.")
         Section("Voice response", when (speechOutput) {
             SpeechOutputState.Initializing -> "Checking installed English voices..."
@@ -413,13 +475,17 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
 }
 
 @Composable
-private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, importModel: () -> Unit) = Page("Models") {
+private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, wakePhrase: String, handsFree: Boolean, importWakeModel: () -> Unit,
+    importModel: () -> Unit) = Page("Models") {
     Icon(Icons.Default.Storage, null, Modifier.size(40.dp))
     Text(if (modelInstalled) "Vosk English model installed" else "No installed speech model", style = MaterialTheme.typography.titleLarge)
-    Text("Speech: ${if (modelInstalled) "offline model installed" else "unavailable"}\nWake word: unavailable\nLocal LLM: off")
+    Text("Speech: ${if (modelInstalled) "offline model installed" else "unavailable"}\nWake word: sherpa-onnx 1.12.14; $wakePhrase\nLocal LLM: off")
     Text("Import the official vosk-model-small-en-us-0.15 ZIP (about 40 MB). It is stored in private app files; allow up to 160 MB expanded. No download is automatic.")
     Text("Model license: Apache-2.0. Import requires the official model ZIP selected from local storage.")
-    Button(onClick = importModel) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Choose model ZIP") }
+    val canImport = !handsFree && voice !is VoiceState.Initializing && voice !is VoiceState.Listening
+    Button(onClick = importModel, enabled = canImport) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Choose model ZIP") }
+    Button(onClick = importWakeModel, enabled = canImport) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Choose wake-word ZIP") }
+    Text("Wake model: English GigaSpeech 3.3M, Apache-2.0. Required: encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt, and one phrase in keywords.txt matching the saved wake phrase. Setup: docs/MODELS.md. No model is downloaded automatically.")
     (voice as? VoiceState.Error)?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
     Text("The model is loaded only on explicit listening/model installation. Target memory, latency, ABI and accuracy still need physical-device testing.")
 }
@@ -428,8 +494,8 @@ private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, importModel
 private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, modelInstalled: Boolean,
     speechOutput: SpeechOutputState, refresh: () -> Unit) = Page("Diagnostics") {
     Section("This device", "${device.manufacturer} / ${device.model}\nAndroid ${device.androidVersion}, API ${device.api}")
-    Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested only when push-to-talk is tapped"}.\nInternet, overlay, boot and foreground-service permissions: not declared.")
-    Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition test: unavailable\nTTS offline availability: unverified\nOverlay/service/boot: not implemented")
+    Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested on explicit listening action"}.\nMicrophone foreground-service and notification permissions declared. Internet, overlay and boot permissions: not declared.")
+    Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition: use Home push-to-talk\nHands-free: explicit-start microphone service; target unverified\nOverlay/boot: not implemented")
     Section("Speech", "Vosk model: ${if (modelInstalled) "installed" else "missing"}\nSpeech output: ${when (speechOutput) {
         SpeechOutputState.Initializing -> "checking"
         SpeechOutputState.Ready -> "offline English voice available"
@@ -443,11 +509,11 @@ private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, mod
 
 @Composable
 private fun HelpScreen(settings: AssistantSettings) = Page("Help and privacy") {
-    Section("Current state", "${if (settings.assistantEnabled) "Assistant preference enabled" else "Assistant disabled"}. Push-to-talk only. Microphone is requested when you tap the mic and stops on finish, cancel or leaving Home.")
+    Section("Current state", "${if (settings.assistantEnabled) "Assistant preference enabled" else "Assistant disabled"}. Push-to-talk or explicitly enabled ${settings.wakePhrase} hands-free. Background listening has an ongoing notification and Stop action.")
     Section("Offline setup", "Import the official Vosk English small-model ZIP from Models. TTS uses only an installed English offline Android voice; no voice data is downloaded automatically.")
     Section("Normal APK limits", "No force-stop of other apps, hidden radio API, root or system privilege. Radio and media availability require real firmware/app evidence.")
     Section("Your data", "Audio is processed locally and not saved or uploaded. Transcripts/results remain in memory only. Settings, command definitions and the app allowlist stay in private app storage. No cloud APIs, telemetry or analytics.")
-    Section("Stop and disable", "Tap Finish or Cancel to stop capture. Leaving Home or backgrounding the app cancels listening. Spoken results can be muted in Settings. Wake word, overlay, boot startup and LLM remain off.")
+    Section("Stop and disable", "Stop hands-free using the listening switch, Stop control, or notification. Leaving Home cancels push-to-talk, not an enabled hands-free session. Spoken results can be muted in Settings. Overlay, boot startup and LLM remain off.")
 }
 
 @Composable

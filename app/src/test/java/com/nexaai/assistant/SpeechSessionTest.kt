@@ -11,14 +11,183 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SpeechSessionTest {
+    private class FakeWake : WakeWordDetector {
+        var failure: Exception? = null
+        var initializes = 0
+        var releases = 0
+        var waits = 0
+        val events = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        override suspend fun initialize(phrase: String) { initializes++; failure?.let { throw it } }
+        override suspend fun awaitDetection() { waits++; events.receive() }
+        override fun stop() {}
+        override fun release() { releases++ }
+    }
+
+    @Test fun disabledDetectorNeverStartsAndFailedInitializationReleasesResources() = runTest {
+        val wake = FakeWake()
+        val engine = FakeEngine()
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this, wake) { false }
+        runCurrent()
+        assertEquals(0, wake.initializes)
+        assertEquals(0, wake.waits)
+        wake.failure = java.io.IOException("Missing or incompatible keyword model")
+        voice.enableHandsFree("Hey Nexa")
+        voice.handsFreeEnabled.first { !it }
+        assertTrue((voice.state.value as VoiceState.Error).message.contains("keyword model"))
+        assertEquals(1, wake.releases)
+        assertFalse(voice.handsFreeEnabled.value)
+        assertEquals(0, engine.initializes)
+        assertTrue(controller.commands.isEmpty())
+    }
+
+    @Test fun silenceReturnsToWakeWaitingAndCancellationBlocksFinalDispatch() = runTest {
+        val wake = FakeWake()
+        val engine = FakeEngine("")
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this, wake) { false }
+        voice.enableHandsFree("Hey Nexa")
+        runCurrent()
+        assertTrue(controller.commands.isEmpty())
+        wake.events.send(Unit)
+        runCurrent()
+        advanceTimeBy(351)
+        runCurrent()
+        assertEquals(2, wake.waits)
+        assertTrue(voice.state.value is VoiceState.WaitingForWakeWord)
+        assertTrue(controller.commands.isEmpty())
+        voice.stopAndJoin()
+
+        val pending = FakeEngine()
+        val next = SpeechSessionCoordinator(pending, FakeInstaller(), dispatcher(controller), FakeOutput(), this, FakeWake().apply {
+            events.trySend(Unit)
+        }) { false }
+        next.enableHandsFree("Hey Nexa")
+        runCurrent()
+        pending.partial?.invoke("volume up")
+        next.cancel()
+        pending.final.complete("volume up")
+        next.stopAndJoin()
+        assertTrue(controller.commands.isEmpty())
+    }
+
+    @Test fun repeatedEnableDisableReleasesEachSessionAndLifecycleDoesNotStopForegroundMode() = runTest {
+        val wake = FakeWake()
+        val engine = FakeEngine()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(Controller()), FakeOutput(), this, wake) { false }
+        repeat(5) {
+            assertTrue(voice.enableHandsFree("Hey Nexa"))
+            runCurrent()
+            voice.cancelForLifecycle()
+            assertTrue(voice.handsFreeEnabled.value)
+            voice.stopAndJoin()
+            assertFalse(voice.handsFreeEnabled.value)
+        }
+        assertEquals(5, wake.initializes)
+        assertEquals(5, wake.releases)
+        assertEquals(5, engine.releases)
+    }
+
+    @Test fun recognitionFailureStopsHandsFreeRatherThanRetryingMicrophoneForever() = runTest {
+        val wake = FakeWake().apply { events.trySend(Unit) }
+        val engine = object : SpeechRecognizerEngine {
+            override suspend fun initialize() {}
+            override suspend fun recognize(onPartialResult: (String) -> Unit): String = throw java.io.IOException("Microphone interrupted")
+            override fun stop() {}
+            override fun release() {}
+        }
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this, wake) { false }
+        voice.enableHandsFree("Hey Nexa")
+        voice.handsFreeEnabled.first { !it }
+        assertTrue(voice.state.value is VoiceState.Error)
+        assertEquals(1, wake.waits)
+        assertTrue(controller.commands.isEmpty())
+    }
+
+    @Test fun recognitionTimeoutStopsCaptureAndRearmsWithoutDispatch() = runTest {
+        val wake = FakeWake().apply { events.trySend(Unit) }
+        val engine = FakeEngine()
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this, wake) { false }
+        voice.enableHandsFree("Hey Nexa")
+        runCurrent()
+        engine.partial?.invoke("volume up")
+        advanceTimeBy(16_351)
+        runCurrent()
+        assertTrue(engine.stopped)
+        assertEquals(2, wake.waits)
+        assertTrue(voice.state.value is VoiceState.WaitingForWakeWord)
+        assertTrue(controller.commands.isEmpty())
+        voice.stopAndJoin()
+    }
+
+    @Test fun wakeCaptureEndsBeforeRecognitionAndSpeechCompletesBeforeRearming() = runTest {
+        val events = mutableListOf<String>()
+        val detection = CompletableDeferred<Unit>()
+        val playback = CompletableDeferred<Unit>()
+        var waits = 0
+        var releases = 0
+        val wake = object : WakeWordDetector {
+            override suspend fun initialize(phrase: String) { events += phrase }
+            override suspend fun awaitDetection() {
+                waits++
+                if (waits == 1) detection.await() else kotlinx.coroutines.awaitCancellation()
+                events += "wake capture released"
+            }
+            override fun stop() {}
+            override fun release() { releases++ }
+        }
+        val engine = object : SpeechRecognizerEngine {
+            override suspend fun initialize() {}
+            override suspend fun recognize(onPartialResult: (String) -> Unit): String {
+                events += "ASR capture"
+                onPartialResult("mute")
+                return "volume up"
+            }
+            override fun stop() {}
+            override fun release() {}
+        }
+        val output = object : SpeechOutput {
+            override val state = MutableStateFlow<SpeechOutputState>(SpeechOutputState.Ready)
+            override fun speak(text: String) {}
+            override suspend fun speakAndAwait(text: String) { playback.await() }
+            override fun stop() {}
+            override fun close() {}
+        }
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), output, this, wake) { true }
+        assertTrue(voice.enableHandsFree("Hey Nexa"))
+        runCurrent()
+        assertTrue(voice.state.value is VoiceState.WaitingForWakeWord)
+        assertTrue(controller.commands.isEmpty())
+        assertFalse(voice.enableHandsFree("Hey Nexa"))
+        assertFalse(voice.start())
+        detection.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("Hey Nexa", "wake capture released", "ASR capture"), events)
+        assertEquals(CommandId.VOLUME_UP, controller.commands.single().id)
+        assertTrue(voice.state.value is VoiceState.SpeakingResponse)
+        assertEquals(1, waits)
+        playback.complete(Unit)
+        advanceTimeBy(351)
+        runCurrent()
+        assertEquals(2, waits)
+        voice.stopAndJoin()
+        assertFalse(voice.handsFreeEnabled.value)
+        assertEquals(1, releases)
+    }
+
     private class FakeEngine(var finalText: String? = null) : SpeechRecognizerEngine {
         var initializeFailure: Exception? = null
         var initializes = 0

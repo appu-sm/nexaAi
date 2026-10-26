@@ -19,13 +19,14 @@ not independently measured device findings.
 | Radio interface | User-supplied verified action/component/key mapping; NexaAI adapter implemented | Installed APK receiver permissions/delivery and end-to-end K2501 results |
 | Volume/media/app launch | Milestone 2 implemented; target unverified | Actual source/app/session tests on head unit |
 | Speech/TTS | Milestone 3 code implemented; target unverified | Real model/voice, airplane-mode, ABI, latency, RAM and lifecycle tests |
-| Overlay/boot/service | Not implemented (Milestone 5) | Permission and ignition/sleep/reboot tests |
-| Wake word/local LLM | Not implemented; off | Real engines and target measurements |
+| Overlay/boot | Not implemented; off | Permission and ignition/sleep/reboot tests |
+| Hands-free service/wake word | Implemented; explicitly enabled only, models required; target unverified | Real keyword accuracy, resource, permission and sleep tests |
+| Local LLM | Not implemented; off | Runtime and target measurements |
 
 No NexaAI hardware-dependent capability has been verified. The radio protocol
 mapping is user-supplied target evidence; app-level receiver access remains open.
-No background recording service is included. Microphone capture is push-to-talk only
-and requires runtime permission. Optional Android notification-listener access
+Background capture requires explicit hands-free opt-in, runtime microphone
+permission and a microphone foreground service. Optional notification-listener access
 must be explicitly granted for media sessions.
 
 ## Project baseline
@@ -138,3 +139,32 @@ commands while stationary to record outcomes per source/player. See `TEST_PLAN.m
 - No K2501 was attached. APK broadcast permission, receiver delivery, actual
 	tuning/seeking/muting/AMS/INTRO behavior, and foreground app transition remain
 	unverified. A broadcast send is not treated as completion feedback.
+
+## Requested Hands-Free Extension (2026-10-26)
+
+Real sherpa-onnx Android `1.12.14` KWS is integrated behind `WakeWordDetector`,
+with the user-imported GigaSpeech English 3.3M model and Hey Nexa BPE tokens.
+The release AAR digest matches upstream metadata; it packages arm64-v8a,
+armeabi-v7a, x86 and x86_64. This is packaging evidence, not a native loading or
+CPU-instruction compatibility test on the NWD_K2501.
+
+API 28/29 uses a normal foreground notification; API 30+ specifies microphone
+service type. Target 35 declares `FOREGROUND_SERVICE_MICROPHONE` and enforces
+explicit foreground starts with runtime `RECORD_AUDIO`. Android 13+ notification
+permission is requested on opt-in; denial does not exempt the service from
+Android task-manager visibility or in-app Stop. There is no boot start, automatic
+restart, overlay dependency, root privilege, wake lock or battery-policy bypass.
+
+Host fake tests verify handoffs, final-only commands, TTS isolation, timeout,
+cleanup and permission/start failure. They do not establish native model validity,
+actual microphone ownership under OEM audio routing, offline TTS quality or awake
+time. Firmware F52L_UPGZ_S212A70 may kill/suspend a normal APK during screen-off,
+sleep or ignition cycles. If persistent listening is blocked, keep hands-free off
+and use visible push-to-talk. Screen-off reliability, accuracy, RAM/CPU/power and
+radio/navigation coexistence must be measured with both models on the actual unit.
+No physical device was tested for this extension; the linked private ChatGPT
+conversation required login and could not be used as additional evidence.
+
+Final host gates: 60 tests passed (none failed/skipped), debug APK assembled,
+lint zero errors/11 warnings. The multi-ABI debug APK is about 191 MiB without
+models. This is not a RAM/power measurement; runtime suitability remains open.

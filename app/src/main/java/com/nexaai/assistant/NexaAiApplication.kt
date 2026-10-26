@@ -12,6 +12,11 @@ import com.nexaai.assistant.execution.*
 import com.nexaai.assistant.speech.AndroidSpeechOutput
 import com.nexaai.assistant.speech.VoskModelInstaller
 import com.nexaai.assistant.speech.VoskSpeechRecognizerEngine
+import com.nexaai.assistant.speech.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 
 class NexaAiApplication : Application() {
     private val store by lazy {
@@ -33,4 +38,13 @@ class NexaAiApplication : Application() {
     val speechEngine by lazy { VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15")) }
     val speechModelInstaller by lazy { VoskModelInstaller(filesDir, contentResolver) }
     val speechOutput by lazy { AndroidSpeechOutput(this) }
+    private val voiceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val wakeModelInstaller by lazy { WakeModel.installer(filesDir, contentResolver) }
+    val voiceCoordinator by lazy {
+        SpeechSessionCoordinator(speechEngine, speechModelInstaller, commandRuntime.dispatcher, speechOutput,
+            voiceScope, SherpaWakeWordDetector(filesDir.resolve(WakeModel.DIRECTORY))) {
+            repository.snapshots.first().configuration.settings.ttsEnabled
+        }
+    }
+    val handsFreeControl by lazy { HandsFreeControl(this, repository, voiceCoordinator, voiceScope) }
 }

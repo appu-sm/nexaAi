@@ -18,10 +18,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 
 sealed interface VoiceState {
     data class Idle(val notice: String? = null) : VoiceState
     data object Initializing : VoiceState
+    data class WaitingForWakeWord(val previous: Completed? = null) : VoiceState
+    data object WakeWordDetected : VoiceState
+    data object SpeakingResponse : VoiceState
     data class Listening(val partialTranscript: String = "") : VoiceState
     data object Processing : VoiceState
     data class Recognized(val transcript: String) : VoiceState
@@ -51,7 +59,16 @@ interface SpeechModelInstaller {
 interface SpeechOutput : Closeable {
     val state: StateFlow<SpeechOutputState>
     fun speak(text: String)
+    suspend fun speakAndAwait(text: String) { speak(text) }
+    suspend fun stopAndAwait() { stop() }
     fun stop()
+}
+
+interface WakeWordDetector {
+    suspend fun initialize(phrase: String)
+    suspend fun awaitDetection()
+    fun stop()
+    fun release()
 }
 
 class SpeechSessionCoordinator(
@@ -60,6 +77,7 @@ class SpeechSessionCoordinator(
     private val dispatcher: CommandDispatcher,
     private val output: SpeechOutput,
     private val scope: CoroutineScope,
+    private val detector: WakeWordDetector? = null,
     private val speechEnabled: suspend () -> Boolean,
 ) {
     private val mutableState = MutableStateFlow<VoiceState>(VoiceState.Idle())
@@ -70,6 +88,58 @@ class SpeechSessionCoordinator(
     private var session: Job? = null
     private val installed = MutableStateFlow(installer.isInstalled())
     val modelInstalled: StateFlow<Boolean> = installed.asStateFlow()
+    private val handsFree = MutableStateFlow(false)
+    val handsFreeEnabled: StateFlow<Boolean> = handsFree.asStateFlow()
+
+    fun enableHandsFree(phrase: String): Boolean {
+        val wake = detector ?: run {
+            mutableState.value = VoiceState.Error("Wake-word engine unavailable. Push-to-talk remains available.")
+            return false
+        }
+        if (!active.compareAndSet(false, true)) return false
+        handsFree.value = true
+        session = scope.launch {
+            try {
+                mutableState.value = VoiceState.Initializing
+                output.stopAndAwait()
+                wake.initialize(phrase)
+                engine.initialize()
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val previous = mutableState.value as? VoiceState.Completed
+                    mutableState.value = VoiceState.WaitingForWakeWord(previous)
+                    wake.awaitDetection()
+                    currentCoroutineContext().ensureActive()
+                    mutableState.value = VoiceState.WakeWordDetected
+                    recognizeCommand()
+                    delay(350)
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                mutableState.value = VoiceState.Error("Speech playback timed out. Hands-free stopped; use push-to-talk or enable it again.")
+            } catch (cancelled: CancellationException) {
+                mutableState.value = VoiceState.Idle("Hands-free listening stopped.")
+                throw cancelled
+            } catch (failure: Exception) {
+                mutableState.value = VoiceState.Error(failure.message ?: "Hands-free listening failed. Use push-to-talk.")
+            } finally {
+                try {
+                    withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                        try { wake.release() } finally { engine.release() }
+                    }
+                } finally {
+                    handsFree.value = false
+                    active.set(false)
+                    finishing.set(false)
+                }
+            }
+        }
+        return true
+    }
+
+    suspend fun stopAndJoin() {
+        cancel()
+        session?.join()
+    }
 
     fun start(): Boolean {
         if (!active.compareAndSet(false, true)) return false
@@ -77,31 +147,9 @@ class SpeechSessionCoordinator(
         session = scope.launch {
             try {
                 mutableState.value = VoiceState.Initializing
+                output.stopAndAwait()
                 engine.initialize()
-                currentCoroutineContext().ensureActive()
-                mutableState.value = VoiceState.Listening()
-                val finalText = engine.recognize { partial ->
-                    if (active.get() && !finishing.get()) {
-                        mutableState.value = VoiceState.Listening(partial.take(300))
-                    }
-                }
-                currentCoroutineContext().ensureActive()
-                mutableState.value = VoiceState.Processing
-                val transcript = normalizeTranscript(finalText)
-                if (transcript.isBlank()) {
-                    mutableState.value = VoiceState.Error("No speech was recognized. Try again in a quiet moment.")
-                    return@launch
-                }
-                mutableState.value = VoiceState.Recognized(transcript)
-                currentCoroutineContext().ensureActive()
-                when (val prepared = dispatcher.prepare(transcript)) {
-                    is Preparation.Rejected -> complete(transcript, prepared.result)
-                    is Preparation.Ready -> {
-                        currentCoroutineContext().ensureActive()
-                        mutableState.value = VoiceState.Executing(transcript)
-                        complete(transcript, dispatcher.execute(prepared.pending))
-                    }
-                }
+                recognizeCommand()
             } catch (cancelled: CancellationException) {
                 mutableState.value = VoiceState.Idle("Listening cancelled.")
                 throw cancelled
@@ -115,8 +163,37 @@ class SpeechSessionCoordinator(
         return true
     }
 
+    private suspend fun recognizeCommand() {
+        finishing.set(false)
+        currentCoroutineContext().ensureActive()
+        mutableState.value = VoiceState.Listening()
+        val finalText = try {
+            withTimeoutOrNull(16_000) {
+                engine.recognize { partial ->
+                    if (active.get() && !finishing.get()) mutableState.value = VoiceState.Listening(partial.take(300))
+                }
+            }.orEmpty()
+        } finally { engine.stop() }
+        currentCoroutineContext().ensureActive()
+        mutableState.value = VoiceState.Processing
+        val transcript = normalizeTranscript(finalText)
+        if (transcript.isBlank()) {
+            mutableState.value = VoiceState.Error("No speech was recognized. Try again in a quiet moment.")
+            return
+        }
+        mutableState.value = VoiceState.Recognized(transcript)
+        when (val prepared = dispatcher.prepare(transcript)) {
+            is Preparation.Rejected -> complete(transcript, prepared.result)
+            is Preparation.Ready -> {
+                currentCoroutineContext().ensureActive()
+                mutableState.value = VoiceState.Executing(transcript)
+                complete(transcript, dispatcher.execute(prepared.pending))
+            }
+        }
+    }
+
     fun finish() {
-        if (!active.get() || !finishing.compareAndSet(false, true)) return
+        if (state.value !is VoiceState.Listening || !finishing.compareAndSet(false, true)) return
         mutableState.value = VoiceState.Processing
         engine.stop()
     }
@@ -124,7 +201,9 @@ class SpeechSessionCoordinator(
     fun cancel() {
         if (!active.get()) return
         finishing.set(true)
+        detector?.stop()
         engine.stop()
+        output.stop()
         session?.cancel()
         mutableState.value = VoiceState.Idle("Listening cancelled.")
     }
@@ -152,7 +231,31 @@ class SpeechSessionCoordinator(
         }
     }
 
+    fun installWakeModel(uri: Uri, installer: SpeechModelInstaller) {
+        if (!active.compareAndSet(false, true)) return
+        session = scope.launch {
+            try {
+                mutableState.value = VoiceState.Initializing
+                withContext(Dispatchers.IO) { detector?.release() }
+                installer.install(uri)
+                detector?.initialize("Hey Nexa")
+                mutableState.value = VoiceState.Idle("Hey Nexa keyword model installed. Enable hands-free explicitly.")
+            } catch (cancelled: CancellationException) {
+                mutableState.value = VoiceState.Idle("Wake-word import cancelled.")
+                throw cancelled
+            } catch (failure: Exception) {
+                mutableState.value = VoiceState.Error(failure.message ?: "Wake-word model import failed.")
+            } finally {
+                try { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { detector?.release() } }
+                finally { active.set(false) }
+            }
+        }
+    }
+
+    fun reportError(message: String) { mutableState.value = VoiceState.Error(message) }
+
     fun cancelForLifecycle() {
+        if (handsFree.value) return
         cancel()
         output.stop()
     }
@@ -179,7 +282,11 @@ class SpeechSessionCoordinator(
     private suspend fun complete(transcript: String, result: CommandResult) {
         mutableState.value = VoiceState.Completed(transcript, result)
         if (speechEnabled() && output.state.value == SpeechOutputState.Ready) {
-            output.speak(spokenSummary(result))
+            if (handsFree.value) {
+                mutableState.value = VoiceState.SpeakingResponse
+                withTimeout(20_000) { output.speakAndAwait(spokenSummary(result)) }
+                mutableState.value = VoiceState.Completed(transcript, result)
+            } else output.speak(spokenSummary(result))
         }
     }
 

@@ -17,6 +17,8 @@ import java.util.concurrent.Executor
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -53,6 +55,7 @@ class VoskSpeechRecognizerEngine(private val modelDirectory: File) : SpeechRecog
         var audio: AudioRecord? = null
         var recordingCallback: AudioManager.AudioRecordingCallback? = null
         var recognizer: Recognizer? = null
+        val interrupted = AtomicBoolean(false)
         try {
             recognizer = Recognizer(loadedModel, sampleRate.toFloat())
             audio = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate,
@@ -64,7 +67,10 @@ class VoskSpeechRecognizerEngine(private val modelDirectory: File) : SpeechRecog
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val callback = object : AudioManager.AudioRecordingCallback() {
                     override fun onRecordingConfigChanged(configurations: List<android.media.AudioRecordingConfiguration>) {
-                        if (configurations.any { it.clientAudioSessionId == audio.audioSessionId && it.isClientSilenced }) stop()
+                        if (configurations.any { it.clientAudioSessionId == audio.audioSessionId && it.isClientSilenced }) {
+                            interrupted.set(true)
+                            stop()
+                        }
                     }
                 }
                 recordingCallback = callback
@@ -73,7 +79,9 @@ class VoskSpeechRecognizerEngine(private val modelDirectory: File) : SpeechRecog
             val samples = ShortArray(bufferSamples)
             val startedAt = android.os.SystemClock.elapsedRealtime()
             while (recording.get() && android.os.SystemClock.elapsedRealtime() - startedAt < maximumCaptureMillis) {
+                currentCoroutineContext().ensureActive()
                 val count = audio.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
+                if (interrupted.get()) throw IOException("Microphone was silenced by Android or another audio session. Try again.")
                 if (count < 0) {
                     if (!recording.get()) break
                     throw IOException("Microphone read failed ($count).")
@@ -83,6 +91,7 @@ class VoskSpeechRecognizerEngine(private val modelDirectory: File) : SpeechRecog
                 val json = if (endpoint) recognizer.result else recognizer.partialResult
                 completedVoskTranscript(endpoint, json, onPartialResult)?.let { return@withContext it }
             }
+            if (interrupted.get()) throw IOException("Microphone was interrupted; command discarded.")
             parseResult(recognizer.finalResult, "text")
         } catch (failure: SecurityException) {
             throw IOException("Microphone permission is required to listen.", failure)
@@ -135,19 +144,23 @@ internal fun completedVoskTranscript(
 
 class VoskModelInstaller(
     private val filesDirectory: File,
+    private val directoryName: String = "vosk-model-small-en-us-0.15",
+    private val requiredFiles: List<String> = listOf("am/final.mdl", "conf/model.conf", "conf/mfcc.conf",
+        "graph/HCLr.fst", "graph/Gr.fst", "graph/phones/word_boundary.int"),
+    private val validateRoot: (File) -> Unit = {},
     private val openArchive: (Uri) -> InputStream?,
 ) : SpeechModelInstaller {
-    constructor(filesDirectory: File, contentResolver: ContentResolver) : this(filesDirectory, contentResolver::openInputStream)
+    constructor(filesDirectory: File, contentResolver: ContentResolver) : this(filesDirectory, openArchive = contentResolver::openInputStream)
 
-    private val installedDirectory = File(filesDirectory, MODEL_DIRECTORY)
+    private val installedDirectory = File(filesDirectory, directoryName)
 
     override fun isInstalled(): Boolean = isModelRoot(installedDirectory)
 
     override suspend fun install(uri: Uri) = withContext(Dispatchers.IO) {
-        val staging = File(filesDirectory, "vosk-import-${System.nanoTime()}")
-        val backup = File(filesDirectory, "$MODEL_DIRECTORY.backup")
+        val staging = File(filesDirectory, "model-import-${System.nanoTime()}")
+        val backup = File(filesDirectory, "$directoryName.backup")
         try {
-            require(uri.scheme == "content") { "Choose a local Vosk model ZIP using the file picker." }
+            require(uri.scheme == "content") { "Choose a local model ZIP using the file picker." }
             val input = openArchive(uri) ?: throw IOException("The selected model file could not be opened.")
             input.use { source ->
                 ZipInputStream(source).use { zip ->
@@ -182,7 +195,8 @@ class VoskModelInstaller(
                 }
             }
             val modelRoot = staging.walkTopDown().firstOrNull(::isModelRoot)
-                ?: throw IOException("The ZIP is incomplete; expected Vosk am, conf, and graph files.")
+                ?: throw IOException("The ZIP is incomplete; required model files are missing.")
+            validateRoot(modelRoot)
             if (backup.exists()) backup.deleteRecursively()
             if (installedDirectory.exists() && !installedDirectory.renameTo(backup)) throw IOException("Could not replace the existing model safely.")
             if (!modelRoot.renameTo(installedDirectory)) {
@@ -197,13 +211,11 @@ class VoskModelInstaller(
     }
 
     private fun isModelRoot(directory: File): Boolean = directory.isDirectory &&
-        listOf("am/final.mdl", "conf/model.conf", "conf/mfcc.conf",
-            "graph/HCLr.fst", "graph/Gr.fst", "graph/phones/word_boundary.int").all { relative ->
+        requiredFiles.all { relative ->
             File(directory, relative).let { it.isFile && it.length() > 0 }
         }
 
     private companion object {
-        const val MODEL_DIRECTORY = "vosk-model-small-en-us-0.15"
         const val MAX_ZIP_ENTRIES = 20_000
         const val MAX_EXPANDED_BYTES = 160L * 1024 * 1024
     }

@@ -78,12 +78,20 @@ fun normalizeAlias(value: String): String = value.trim().lowercase(Locale.ROOT).
 internal val commandPlaceholderPattern = Regex("\\{[^{}]+\\}")
 
 object ConfigurationValidator {
+    fun validateWakePhrase(phrase: String) {
+        require(phrase.length in 1..80 && phrase.matches(Regex("[A-Za-z]+(?:[ '-][A-Za-z]+)*"))) {
+            "Wake phrase must be 1-80 English letters, spaces, apostrophes or hyphens, with no outer or repeated separators."
+        }
+    }
+
     fun validate(config: Configuration) {
         require(config.schemaVersion == 1) { "Unsupported configuration schema" }
         with(config.settings) {
             require(displayName.trim() == displayName && displayName.length in 1..40 && displayName.none { it.isISOControl() }) { "Name must be 1-40 printable characters with no outer spaces" }
-            require(offlineOnly && listeningMode == "PUSH_TO_TALK" && !wakeWordEnabled &&
-                wakePhrase == "Hey Nexa" && !autoStartAfterBoot && !overlayEnabled &&
+            validateWakePhrase(wakePhrase)
+            require(offlineOnly && listeningMode in setOf("PUSH_TO_TALK", "WAKE_WORD") &&
+                (wakeWordEnabled == (listeningMode == "WAKE_WORD")) &&
+                !autoStartAfterBoot && !overlayEnabled &&
                 confirmationMode == "SHORT" && !llmEnabled && !debugLoggingEnabled) {
                 "Configuration enables an unavailable feature; only the app shell is installed"
             }

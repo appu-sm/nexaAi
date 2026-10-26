@@ -774,6 +774,29 @@ and outstanding target checks are maintained in the test/device reports.
 
 ### Milestone 4 --- K2501 radio investigation
 
+**Requested hands-free extension (2026-10-26):** The user explicitly expands
+Milestone 4 to include offline wake word and its necessary foreground service,
+bringing forward those parts of Milestones 5/6 without implementing overlay or
+boot startup. Preserve the radio adapter and frozen keys 5/6/46/61; 26/27 are
+frequency steps, never station search. sherpa-onnx Android `1.12.14` (Apache-2.0)
+implements real keyword spotting through `WakeWordDetector`, using the English
+GigaSpeech 3.3M 2024-01-01 model and a user-imported single English BPE keyword.
+The wake phrase is configurable in Settings (default Hey Nexa), persisted in the
+existing schema and checked against the imported tokens when hands-free starts.
+Changing text does not regenerate tokens; the ZIP must match the selected phrase.
+The runtime and model sources/licenses/setup are in `docs/MODELS.md`.
+One application-owned `SpeechSessionCoordinator` serves push-to-talk and a
+nonexported, explicit-start microphone foreground service. Only one capture runs;
+wake capture closes before Vosk starts, final transcripts use the existing
+dispatcher, and TTS completion plus a short cooldown precede rearming. Errors
+stop continuous listening rather than restarting aggressively. Service destruction
+releases models off main. Persisted settings never authorize boot/process restart
+or configuration import to start recording. Target accuracy, native model loading,
+RAM/CPU, power, audio interruptions and screen-off/ignition behavior remain
+unverified. Use host tests and the separate stationary device checklist before
+claiming hardware completion. START/STOP_LISTENING voice aliases remain unsupported;
+the explicit UI/notification Stop controls are authoritative.
+
 -   Collect device properties and package/activity details.
 -   Identify radio app and any documented vendor SDK or exported
     integration.

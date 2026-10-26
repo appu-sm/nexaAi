@@ -24,6 +24,7 @@ data class AssistantUiState(
     val voice: VoiceState = VoiceState.Idle(),
     val speechOutput: SpeechOutputState = SpeechOutputState.Initializing,
     val modelInstalled: Boolean = false,
+    val handsFreeEnabled: Boolean = false,
 )
 
 data class CommandUiState(
@@ -44,12 +45,15 @@ class AssistantViewModel(
     speechEngine: SpeechRecognizerEngine? = null,
     speechModelInstaller: SpeechModelInstaller? = null,
     speechOutput: SpeechOutput? = null,
+    private val sharedVoice: SpeechSessionCoordinator? = null,
+    private val handsFreeControl: HandsFreeControl? = null,
+    private val wakeInstaller: SpeechModelInstaller? = null,
 ) : ViewModel() {
     private val busy = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
     private val preview = MutableStateFlow<Configuration?>(null)
     private val controls = MutableStateFlow(CommandUiState())
-    private val voiceRuntime = if (runtime != null && speechEngine != null && speechModelInstaller != null && speechOutput != null) {
+    private val voiceRuntime = sharedVoice ?: if (runtime != null && speechEngine != null && speechModelInstaller != null && speechOutput != null) {
         SpeechSessionCoordinator(speechEngine, speechModelInstaller, runtime.dispatcher, speechOutput, viewModelScope) {
             repository.snapshots.first().configuration.settings.ttsEnabled
         }
@@ -60,8 +64,11 @@ class AssistantViewModel(
     private val baseState = combine(repository.snapshots, busy, message, preview, controls) { snapshot, working, notice, imported, commandState ->
         AssistantUiState(snapshot, working, notice, imported, commandState)
     }
-    val state = combine(baseState, voiceState, outputState, modelInstalled) { shell, voice, speech, installed ->
+    private val voiceUiState = combine(baseState, voiceState, outputState, modelInstalled) { shell, voice, speech, installed ->
         shell.copy(voice = voice, speechOutput = speech, modelInstalled = installed)
+    }
+    val state = combine(voiceUiState, handsFreeControl?.enabled ?: MutableStateFlow(false)) { shell, enabled ->
+        shell.copy(handsFreeEnabled = enabled)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AssistantUiState())
 
     init {
@@ -123,6 +130,10 @@ class AssistantViewModel(
         voiceRuntime?.microphonePermissionDenied(permanentlyDenied)
     }
     fun installSpeechModel(uri: Uri) { voiceRuntime?.installModel(uri) }
+    fun installWakeModel(uri: Uri) { wakeInstaller?.let { voiceRuntime?.installWakeModel(uri, it) } }
+    fun setHandsFreeEnabled(enabled: Boolean) {
+        if (enabled) handsFreeControl?.enable() else handsFreeControl?.disable()
+    }
     fun setTtsEnabled(enabled: Boolean) = perform("Speech response preference saved") {
         repository.update { it.copy(settings = it.settings.copy(ttsEnabled = enabled)) }
     }
@@ -160,6 +171,11 @@ class AssistantViewModel(
 
     fun setName(name: String) = perform("Name saved") {
         repository.update { it.copy(settings = it.settings.copy(displayName = name.trim())) }
+    }
+
+    fun setWakePhrase(phrase: String) = perform("Wake phrase saved") {
+        require(handsFreeControl?.enabled?.value != true) { "Stop hands-free before changing the wake phrase." }
+        repository.update { it.copy(settings = it.settings.copy(wakePhrase = phrase.trim())) }
     }
 
     fun setAssistantEnabled(enabled: Boolean) = perform("Assistant preference saved") {
@@ -208,7 +224,7 @@ class AssistantViewModel(
     }
 
     override fun onCleared() {
-        voiceRuntime?.close()
+        if (sharedVoice == null) voiceRuntime?.close() else voiceRuntime?.cancelForLifecycle()
         super.onCleared()
     }
 }

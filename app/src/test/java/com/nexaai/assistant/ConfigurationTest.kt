@@ -66,6 +66,18 @@ class ConfigurationTest {
         assertEquals(enabled, ConfigurationCodec.decode(ConfigurationCodec.encode(enabled)))
     }
 
+    @Test fun customWakePhrasesRoundTripAndInvalidPhrasesAreRejected() {
+        for (phrase in listOf("Hey Radio", "Hello Cabin", "Nexa", "Hey O'Neil", "Hey Co-pilot")) {
+            val config = Configuration(settings = AssistantSettings(wakePhrase = phrase))
+            assertEquals(config, ConfigurationCodec.decode(ConfigurationCodec.encode(config)))
+        }
+        for (phrase in listOf("", " ", " Hey Radio", "Hey Radio ", "Hey  Radio", "Hey\nRadio", "Hey :100", "<unk>", "a".repeat(81))) {
+            assertThrows(IllegalArgumentException::class.java) {
+                ConfigurationValidator.validate(Configuration(settings = AssistantSettings(wakePhrase = phrase)))
+            }
+        }
+    }
+
     @Test fun invalidVersionsFieldsAndFeatureFlagsAreRejected() {
         val json = ConfigurationCodec.encode(Configuration())
         listOf(

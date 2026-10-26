@@ -5,6 +5,15 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.Voice
+import android.speech.tts.UtteranceProgressListener
+import android.media.AudioManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +23,9 @@ class AndroidSpeechOutput(context: Context) : SpeechOutput, TextToSpeech.OnInitL
     private val mutableState = MutableStateFlow<SpeechOutputState>(SpeechOutputState.Initializing)
     override val state: StateFlow<SpeechOutputState> = mutableState.asStateFlow()
     @Volatile private var engine: TextToSpeech? = null
+    private val audioManager = context.getSystemService(AudioManager::class.java)
+    @Volatile private var pending: CompletableDeferred<Unit>? = null
+    @Volatile private var pendingId: String? = null
 
     init {
         try {
@@ -29,6 +41,19 @@ class AndroidSpeechOutput(context: Context) : SpeechOutput, TextToSpeech.OnInitL
             mutableState.value = SpeechOutputState.Unavailable("No working text-to-speech engine is installed.")
             return
         }
+        current.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String) {}
+            override fun onDone(utteranceId: String) {
+                if (utteranceId == pendingId) pending?.complete(Unit)
+            }
+            @Deprecated("Android callback")
+            override fun onError(utteranceId: String) {
+                if (utteranceId == pendingId) pending?.completeExceptionally(IOException("Offline speech playback failed."))
+            }
+            override fun onStop(utteranceId: String, interrupted: Boolean) {
+                if (utteranceId == pendingId) pending?.completeExceptionally(IOException("Speech playback was interrupted."))
+            }
+        })
         val offlineVoice = current.voices.orEmpty()
             .filter { voice -> voice.locale.language == "en" && isOfflineVoice(voice) }
             .sortedWith(compareByDescending<Voice> { it.locale.country == "US" }.thenByDescending { it.quality })
@@ -50,7 +75,49 @@ class AndroidSpeechOutput(context: Context) : SpeechOutput, TextToSpeech.OnInitL
     }
 
     override fun stop() {
-        main.post { engine?.stop() }
+        main.post {
+            engine?.stop()
+            pending?.completeExceptionally(IOException("Speech playback stopped."))
+        }
+    }
+
+    override suspend fun stopAndAwait() = withContext(Dispatchers.Main.immediate) {
+        engine?.stop()
+        pending?.completeExceptionally(IOException("Speech playback stopped."))
+        Unit
+    }
+
+    override suspend fun speakAndAwait(text: String) = withContext(Dispatchers.Main.immediate) {
+        val completion = CompletableDeferred<Unit>()
+        val utterance = "nexaai-${System.nanoTime()}"
+        val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            .setOnAudioFocusChangeListener { change ->
+                if (change < 0) {
+                    engine?.stop()
+                    completion.completeExceptionally(IOException("Speech audio focus was interrupted."))
+                }
+            }.build()
+        try {
+            if (audioManager.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                throw IOException("Speech audio focus unavailable. Hands-free paused; use push-to-talk.")
+            }
+            pending = completion
+            pendingId = utterance
+            if (state.value != SpeechOutputState.Ready ||
+                engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utterance) != TextToSpeech.SUCCESS) {
+                throw IOException("Offline speech playback unavailable.")
+            }
+            completion.await()
+        } finally {
+            withContext(NonCancellable) {
+                engine?.stop()
+                pending = null
+                pendingId = null
+                audioManager.abandonAudioFocusRequest(focus)
+            }
+        }
     }
 
     override fun close() {

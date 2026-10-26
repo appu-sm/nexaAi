@@ -95,3 +95,11 @@ The adapter uses the explicit radio activity, frequency action/extra, key 5/6/46
 and mute boolean action/extra. Local tests verify outgoing intents and request
 mapping; they do not prove the normal APK is permitted by the receiver or that the
 tuner completed an operation. All radio voice phrases above are available offline.
+
+Hands-free uses the same command path after a separate Hey Nexa keyword event.
+Pause after the wake phrase, then speak the command; wake audio is discarded and
+not prefixed to the command transcript. The detector never calls radio controllers
+or emits broadcasts. Verified launch, frequency extra, search 5/6, AMS 46, INTRO 61
+and mute mappings are unchanged; frequency-step keys 26/27 are never search.
+START/STOP_LISTENING aliases remain unsupported rather than bypassing validation;
+use the persistent listening controls or foreground notification Stop action.
