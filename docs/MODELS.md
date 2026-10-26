@@ -44,6 +44,46 @@ not the same as expanded storage or runtime RAM; the Vosk catalog describes smal
 models as typically around 50 MB and roughly 300 MB runtime memory. Actual K2501
 memory use, CPU, startup, accuracy and ABI compatibility have not been measured.
 
+## Vosk Grammar Mode
+
+In **Settings > Listening**, enable **Vosk grammar mode** to constrain command
+recognition. It is off by default. Enter optional custom words or phrases in
+**Custom grammar words**, one entry per line, then choose **Save custom words**.
+Up to 100 distinct entries are accepted, each 1-60 English letters with single
+spaces, apostrophes or hyphens between letter groups. Entries are lowercased and
+deduplicated. Turning the mode off retains them. These preferences persist and
+are included in configuration export/import; older schema-1 files default to
+grammar off and no custom entries.
+
+At each command capture, the app snapshots the current settings, enabled aliases
+and private app allowlist. It builds the grammar off main and passes a JSON phrase
+array to Vosk's grammar-aware recognizer constructor. Push-to-talk and wake-driven
+commands share this path; the loaded acoustic model is reused. Settings or alias
+changes during recording take effect on the next capture, not halfway through it.
+
+Generated phrases expand app placeholders using allowlisted names, volume values
+0-100, and FM frequencies 87.50-108.00 in 0.01 MHz steps. Numbers support English
+cardinal and digit-by-digit forms, with decimal digits after `point`; for example,
+`set volume to fifty percent` and `tune fm to ninety eight point three`. Exact
+generated numeric phrases are mapped to the parser's existing digit format on
+final results only. Unrestricted mode and typed-command parsing are unchanged.
+Grammar-mode FM expansion uses the head unit's 10 kHz request granularity; finer
+numeric input remains available through typed commands or unrestricted decoding.
+
+`[unk]` is always included. Results containing it, and ambiguous generated spoken
+forms, are rejected rather than guessed. Custom vocabulary does not define new
+commands: final transcripts still go through the same parser, enabled-command
+checks, parameter validation and dispatcher. A grammar is not an exact phrase
+matcher or a safety boundary; unrelated audio may still decode to a valid command.
+
+Use the recommended small English model, which supports dynamic grammar. Custom
+entries select vocabulary already available in that model; they do not add new
+pronunciations, train the model, or guarantee recognition of out-of-vocabulary
+names. Recognizer construction errors stop capture visibly rather than silently
+falling back to unrestricted decoding. Generation is bounded to 65,536 entries
+and 4 MiB of phrase data; overly large alias sets fail with an actionable error.
+CPU/RAM cost, accuracy and false-command rates still require on-device A/B tests.
+
 ## Offline TTS
 
 Android TextToSpeech initializes asynchronously. NexaAI chooses an already

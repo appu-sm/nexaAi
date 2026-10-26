@@ -20,10 +20,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
+import org.json.JSONArray
 import org.vosk.Model
 import org.vosk.Recognizer
 
-class VoskSpeechRecognizerEngine(private val modelDirectory: File) : SpeechRecognizerEngine {
+class VoskSpeechRecognizerEngine(
+    private val modelDirectory: File,
+    private val grammar: suspend () -> VoskGrammar? = { null },
+) : SpeechRecognizerEngine {
     @Volatile private var model: Model? = null
     @Volatile private var recorder: AudioRecord? = null
     private val recording = AtomicBoolean(false)
@@ -57,7 +61,13 @@ class VoskSpeechRecognizerEngine(private val modelDirectory: File) : SpeechRecog
         var recognizer: Recognizer? = null
         val interrupted = AtomicBoolean(false)
         try {
-            recognizer = Recognizer(loadedModel, sampleRate.toFloat())
+            val sessionGrammar = grammar()
+            recognizer = try {
+                if (sessionGrammar == null) Recognizer(loadedModel, sampleRate.toFloat())
+                else Recognizer(loadedModel, sampleRate.toFloat(), JSONArray(sessionGrammar.phrases).toString())
+            } catch (failure: Exception) {
+                throw IOException("Vosk recognizer initialization failed. Grammar mode requires a model supporting dynamic grammar; use the recommended small English model or turn grammar mode off.", failure)
+            }
             audio = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferBytes)
             if (audio.state != AudioRecord.STATE_INITIALIZED) throw IOException("Microphone could not be initialized.")
@@ -89,10 +99,13 @@ class VoskSpeechRecognizerEngine(private val modelDirectory: File) : SpeechRecog
                 if (count == 0) continue
                 val endpoint = recognizer.acceptWaveForm(samples, count)
                 val json = if (endpoint) recognizer.result else recognizer.partialResult
-                completedVoskTranscript(endpoint, json, onPartialResult)?.let { return@withContext it }
+                completedVoskTranscript(endpoint, json, onPartialResult)?.let {
+                    return@withContext sessionGrammar?.canonicalTranscript(it) ?: it
+                }
             }
             if (interrupted.get()) throw IOException("Microphone was interrupted; command discarded.")
-            parseResult(recognizer.finalResult, "text")
+            val transcript = parseResult(recognizer.finalResult, "text")
+            sessionGrammar?.canonicalTranscript(transcript) ?: transcript
         } catch (failure: SecurityException) {
             throw IOException("Microphone permission is required to listen.", failure)
         } catch (failure: IllegalStateException) {

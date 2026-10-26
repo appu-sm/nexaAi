@@ -352,3 +352,29 @@ mapping was modified by this extension.
 	malformed/multiple keyword lines must still fail import. Importing a changed
 	phrase configuration during a session must stop hands-free, not silently
 	keep listening for the old phrase. Repeat on compact and landscape layouts.
+
+## Configurable Vosk Grammar
+
+Host regressions cover grammar off/on, enabled aliases, app-name expansion,
+numeric final-transcript mapping through the existing parser, unknown and
+ambiguous spoken-form rejection, custom vocabulary without command authorization,
+per-session refresh, generation limits, preference validation, older schema-1
+imports, persistence/export/import and Settings toggle/editor behavior.
+
+Stationary device acceptance remains pending:
+
+1. Compare the same recorded command and non-command audio with grammar off/on,
+	in quiet and representative cabin noise. Record correct command rate and false
+	executions separately; vocabulary constraints alone do not establish safety.
+2. Exercise volume 0/50/100 and FM band edges/decimals, cardinal and digit-by-digit
+	numbers, edited aliases, allowed app names, and `[unk]` rejection. Confirm only
+	final transcripts dispatch and radio mappings remain unchanged.
+3. Add custom entries, including a name absent from the model vocabulary. Verify
+	persistence, no implicit command creation, and document any upstream ignored
+	words. Custom vocabulary cannot add acoustic pronunciations.
+4. Change mode/entries while a capture is active and during hands-free waiting.
+	Confirm only the next command capture uses the new snapshot. Switching grammar
+	off must use unrestricted Vosk again without restarting or reimporting models.
+5. Test the Settings editor at compact/landscape sizes and invalid/oversized input.
+	Measure native grammar construction latency and peak RAM on the 2 GB target.
+	Verify model/grammar failures stop before capture without silent fallback.

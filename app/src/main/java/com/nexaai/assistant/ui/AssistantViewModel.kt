@@ -178,6 +178,15 @@ class AssistantViewModel(
         repository.update { it.copy(settings = it.settings.copy(wakePhrase = phrase.trim())) }
     }
 
+    fun setGrammarEnabled(enabled: Boolean) = perform("Grammar mode saved") {
+        repository.update { it.copy(settings = it.settings.copy(grammarEnabled = enabled)) }
+    }
+
+    fun setGrammarWords(words: List<String>) = perform("Custom grammar words saved") {
+        val normalized = words.map(::normalizeAlias).filter(String::isNotEmpty).distinct()
+        repository.update { it.copy(settings = it.settings.copy(grammarCustomWords = normalized)) }
+    }
+
     fun setAssistantEnabled(enabled: Boolean) = perform("Assistant preference saved") {
         repository.update { it.copy(settings = it.settings.copy(assistantEnabled = enabled)) }
     }

@@ -200,7 +200,8 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                 SettingsScreen(configuration.settings, editable, viewModel::setName, viewModel::setAssistantEnabled,
                                     { reset = "settings" }, { importer.launch(arrayOf("application/json", "text/plain")) },
                                     { exporter.launch("nexaai-configuration.json") }, viewModel::setTtsEnabled, state.speechOutput,
-                                    state.handsFreeEnabled, viewModel::setWakePhrase)
+                                    state.handsFreeEnabled, viewModel::setWakePhrase,
+                                    viewModel::setGrammarEnabled, viewModel::setGrammarWords)
                             }
                             composable(Destination.MODELS.name) { ModelsScreen(state.modelInstalled, state.voice,
                                 configuration.settings.wakePhrase, state.handsFreeEnabled, { wakeImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
@@ -424,10 +425,14 @@ private fun AliasDialog(definition: CommandDefinition, configuration: Configurat
 @Composable
 private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setName: (String) -> Unit,
     setEnabled: (Boolean) -> Unit, reset: () -> Unit, importConfig: () -> Unit, exportConfig: () -> Unit,
-    setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState, handsFree: Boolean, setWakePhrase: (String) -> Unit) {
+    setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState, handsFree: Boolean, setWakePhrase: (String) -> Unit,
+    setGrammarEnabled: (Boolean) -> Unit, setGrammarWords: (List<String>) -> Unit) {
     var name by rememberSaveable(settings.displayName) { mutableStateOf(settings.displayName) }
     var wakePhrase by rememberSaveable(settings.wakePhrase) { mutableStateOf(settings.wakePhrase) }
     val phraseError = runCatching { ConfigurationValidator.validateWakePhrase(wakePhrase.trim()) }.exceptionOrNull()?.message
+    var grammarWords by rememberSaveable(settings.grammarCustomWords) { mutableStateOf(settings.grammarCustomWords.joinToString("\n")) }
+    val customWords = grammarWords.lines().map(::normalizeAlias).filter(String::isNotEmpty).distinct()
+    val grammarError = runCatching { ConfigurationValidator.validateGrammarWords(customWords) }.exceptionOrNull()?.message
     Page("Settings") {
         Text("General", style = MaterialTheme.typography.titleLarge)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -449,6 +454,19 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
         Button(onClick = { setWakePhrase(wakePhrase) }, enabled = editable && !handsFree && phraseError == null,
             modifier = Modifier.testTag("save_wake_phrase")) {
             Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Save wake phrase")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Vosk grammar mode", Modifier.weight(1f))
+            Switch(settings.grammarEnabled, setGrammarEnabled, enabled = editable,
+                modifier = Modifier.testTag("grammar_enabled").semantics { contentDescription = "Vosk grammar mode" })
+        }
+        OutlinedTextField(grammarWords, { grammarWords = it }, label = { Text("Custom grammar words") },
+            enabled = editable, minLines = 3, maxLines = 6, isError = grammarError != null,
+            supportingText = { Text(grammarError ?: "${customWords.size} / 100 entries") },
+            modifier = Modifier.fillMaxWidth().testTag("grammar_words"))
+        Button(onClick = { setGrammarWords(customWords) }, enabled = editable && grammarError == null,
+            modifier = Modifier.testTag("save_grammar_words")) {
+            Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Save custom words")
         }
         Section("Startup and service", "Hands-free uses a microphone foreground service with an ongoing notification. Automatic startup and resume after reboot or process death are off. Screen-off and firmware sleep behavior are unverified.")
         Section("Overlay", "Off. No overlay implementation or permission requested (Milestone 5). Size, opacity, position and tap controls unavailable.")

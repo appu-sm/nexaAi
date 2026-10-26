@@ -2,6 +2,12 @@
 
 ## 0.1.0 - In development
 
+- Add optional Vosk grammar mode and custom vocabulary in Settings. Build bounded
+    per-session grammars from enabled aliases, allowlisted app names, spoken
+    volume/FM values and `[unk]`; map final numeric phrases into the unchanged
+    command parser. Persist/export preferences with older-file defaults. No
+    retraining, automatic command authorization or measured accuracy claim.
+
 - Make the English wake phrase configurable in Settings and portable schema-1
     configuration. Accept custom single-phrase keyword ZIPs and check their tokens
     against the saved phrase before hands-free starts. Changing text still requires

@@ -764,6 +764,15 @@ and outstanding target checks are maintained in the test/device reports.
 
 ### Milestone 3 --- Offline speech and TTS
 
+Vosk command capture supports optional runtime grammar mode, off by default, and
+up to 100 custom English vocabulary entries in Settings. The per-session grammar
+uses enabled command aliases, allowlisted names and bounded spoken volume/FM
+expansions plus `[unk]`. Final numeric phrases map back to existing parser inputs;
+partials never dispatch. Existing schema-1 files default missing grammar settings
+to off/empty. Custom vocabulary does not train new words or authorize commands.
+Acoustic accuracy, false-command rates and native grammar resource use remain
+device-verification gates; the wake detector and radio mappings are unchanged.
+
 -   Integrate Vosk or a selected offline recognizer.
 -   Add model import/setup and model status UI.
 -   Implement audio lifecycle and state machine.

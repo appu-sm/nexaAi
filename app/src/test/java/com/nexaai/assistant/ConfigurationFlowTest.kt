@@ -60,12 +60,15 @@ class ConfigurationFlowTest {
         val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
             val first = ConfigurationRepository(PreferenceDataStoreFactory.create(scope = firstScope, produceFile = { file }))
-            first.update { it.copy(settings = it.settings.copy(displayName = "Persistent", assistantEnabled = false, wakePhrase = "Hey Radio")) }
+            first.update { it.copy(settings = it.settings.copy(displayName = "Persistent", assistantEnabled = false, wakePhrase = "Hey Radio",
+                grammarEnabled = true, grammarCustomWords = listOf("navigation", "cabin music"))) }
             firstScope.coroutineContext[Job]!!.cancelAndJoin()
             val second = ConfigurationRepository(PreferenceDataStoreFactory.create(scope = secondScope, produceFile = { file }))
             assertEquals("Persistent", second.snapshots.first().configuration.settings.displayName)
             assertFalse(second.snapshots.first().configuration.settings.assistantEnabled)
             assertEquals("Hey Radio", second.snapshots.first().configuration.settings.wakePhrase)
+            assertTrue(second.snapshots.first().configuration.settings.grammarEnabled)
+            assertEquals(listOf("navigation", "cabin music"), second.snapshots.first().configuration.settings.grammarCustomWords)
         } finally {
             firstScope.coroutineContext[Job]!!.cancelAndJoin()
             secondScope.coroutineContext[Job]!!.cancelAndJoin()
@@ -87,7 +90,8 @@ class ConfigurationFlowTest {
         val collector = launch(Dispatchers.Unconfined) { viewModel.state.collect { } }
         try {
             withTimeout(10_000) { viewModel.state.first { it.snapshot.ready } }
-            val imported = Configuration(settings = AssistantSettings(displayName = "Imported", assistantEnabled = false, wakePhrase = "Hello Cabin"))
+            val imported = Configuration(settings = AssistantSettings(displayName = "Imported", assistantEnabled = false, wakePhrase = "Hello Cabin",
+                grammarEnabled = true, grammarCustomWords = listOf("navigation")))
             documents.write(Uri.fromFile(document), imported)
             assertEquals(imported, documents.read(Uri.fromFile(document)))
             viewModel.importDocument(Uri.fromFile(document))

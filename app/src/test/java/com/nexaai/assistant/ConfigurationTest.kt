@@ -66,6 +66,25 @@ class ConfigurationTest {
         assertEquals(enabled, ConfigurationCodec.decode(ConfigurationCodec.encode(enabled)))
     }
 
+    @Test fun grammarPreferencesRoundTripAndOlderConfigurationsDefaultToOff() {
+        val config = Configuration(settings = AssistantSettings(grammarEnabled = true, grammarCustomWords = listOf("navigation", "cabin music")))
+        assertEquals(config, ConfigurationCodec.decode(ConfigurationCodec.encode(config)))
+        val old = JSONObject(ConfigurationCodec.encode(Configuration()))
+        old.getJSONObject("settings").remove("grammarEnabled")
+        old.getJSONObject("settings").remove("grammarCustomWords")
+        assertEquals(Configuration(), ConfigurationCodec.decode(old.toString()))
+        for (words in listOf(listOf(""), listOf("UPPER"), listOf("[unk]"), listOf("same", "same"), List(101) { "word" })) {
+            assertThrows(IllegalArgumentException::class.java) {
+                ConfigurationValidator.validate(Configuration(settings = AssistantSettings(grammarCustomWords = words)))
+            }
+        }
+        for (value in listOf("true", 1)) {
+            val invalid = JSONObject(ConfigurationCodec.encode(config))
+            invalid.getJSONObject("settings").put("grammarEnabled", value)
+            assertThrows(ConfigurationException::class.java) { ConfigurationCodec.decode(invalid.toString()) }
+        }
+    }
+
     @Test fun customWakePhrasesRoundTripAndInvalidPhrasesAreRejected() {
         for (phrase in listOf("Hey Radio", "Hello Cabin", "Nexa", "Hey O'Neil", "Hey Co-pilot")) {
             val config = Configuration(settings = AssistantSettings(wakePhrase = phrase))

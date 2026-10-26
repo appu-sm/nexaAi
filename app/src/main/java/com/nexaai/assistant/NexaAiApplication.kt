@@ -35,7 +35,14 @@ class NexaAiApplication : Application() {
             VerifiedVolumeController(AndroidVolumeDevice(this)), SessionMediaController(AndroidMediaDevice(this)),
             VerifiedRadioController(AndroidRadioDevice(this)))
     }
-    val speechEngine by lazy { VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15")) }
+    val speechEngine by lazy {
+        VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15")) {
+            val snapshot = repository.snapshots.first { it.ready }
+            check(snapshot.warning == null) { "Repair configuration before starting recognition." }
+            if (!snapshot.configuration.settings.grammarEnabled) null
+            else VoskGrammar.build(snapshot.configuration, commandRuntime.allowlist.apps())
+        }
+    }
     val speechModelInstaller by lazy { VoskModelInstaller(filesDir, contentResolver) }
     val speechOutput by lazy { AndroidSpeechOutput(this) }
     private val voiceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

@@ -57,6 +57,10 @@ hardware actions. Test actual controls only while stationary.
     playback changes are not verified.
 - Push-to-talk uses Vosk locally after a user imports the model ZIP; only final
     transcripts reach the existing deterministic command dispatcher. No model is bundled.
+- Settings > Listening offers optional Vosk grammar mode (off by default) and
+    saved custom vocabulary, one entry per line. Generated phrases follow enabled
+    aliases, allowlisted app names and spoken volume/FM values. Changes apply on
+    the next capture; custom words do not create commands or retrain the model.
 - Hands-free uses real sherpa-onnx `1.12.14` keyword spotting, not a continuous
     Vosk transcription loop. Import the English keyword model configured for
     your English wake phrase, save the same phrase in Settings > Listening

@@ -77,6 +77,33 @@ class ShellUiTest {
         compose.onNodeWithTag("wake_phrase").assertTextContains("Hey Radio")
     }
 
+    @Test fun grammarModeAndCustomWordsCanBeSavedAndDisabledIndependently() {
+        navigate("SETTINGS")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("grammar_enabled").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        compose.onNodeWithTag("grammar_enabled").performScrollTo().assertIsOff().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Grammar mode saved").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("grammar_enabled").assertIsOn()
+        compose.onNodeWithTag("grammar_words").performScrollTo().performTextReplacement("[unk]")
+        compose.onNodeWithTag("save_grammar_words").assertIsNotEnabled()
+        compose.onNodeWithTag("grammar_words").performTextReplacement("Navigation\ncabin music\nnavigation")
+        compose.onNodeWithTag("save_grammar_words").performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Custom grammar words saved").fetchSemanticsNodes().isNotEmpty() }
+        navigate("HOME")
+        navigate("SETTINGS")
+        compose.onNodeWithTag("grammar_words").assertTextContains("navigation\ncabin music")
+        compose.onNodeWithTag("grammar_enabled").performScrollTo().assertIsOn().performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("grammar_enabled").fetchSemanticsNodes().all { node ->
+                node.config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState] == androidx.compose.ui.state.ToggleableState.Off
+            }
+        }
+        compose.onNodeWithTag("grammar_words").assertTextContains("navigation\ncabin music")
+    }
+
     @Test fun developmentCommandsPreviewCancelAndValidateRadioFrequencies() {
         compose.waitUntil(10_000) {
             compose.onAllNodesWithTag("command_input").fetchSemanticsNodes().any { node ->

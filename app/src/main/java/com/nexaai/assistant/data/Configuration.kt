@@ -15,6 +15,8 @@ data class AssistantSettings(
     val confirmationMode: String = "SHORT",
     val llmEnabled: Boolean = false,
     val debugLoggingEnabled: Boolean = false,
+    val grammarEnabled: Boolean = false,
+    val grammarCustomWords: List<String> = emptyList(),
 )
 
 enum class CommandId { SET_VOLUME, VOLUME_UP, VOLUME_DOWN, MUTE, UNMUTE, LAUNCH_APP,
@@ -78,6 +80,13 @@ fun normalizeAlias(value: String): String = value.trim().lowercase(Locale.ROOT).
 internal val commandPlaceholderPattern = Regex("\\{[^{}]+\\}")
 
 object ConfigurationValidator {
+    fun validateGrammarWords(words: List<String>) {
+        require(words.size <= 100 && words.distinct().size == words.size) { "Use at most 100 distinct custom grammar entries." }
+        require(words.all { it == normalizeAlias(it) && it.length in 1..60 && it.matches(Regex("[a-z]+(?:[ '-][a-z]+)*")) }) {
+            "Custom grammar entries must be 1-60 lowercase English letters, with single spaces, apostrophes or hyphens between letter groups."
+        }
+    }
+
     fun validateWakePhrase(phrase: String) {
         require(phrase.length in 1..80 && phrase.matches(Regex("[A-Za-z]+(?:[ '-][A-Za-z]+)*"))) {
             "Wake phrase must be 1-80 English letters, spaces, apostrophes or hyphens, with no outer or repeated separators."
@@ -89,6 +98,7 @@ object ConfigurationValidator {
         with(config.settings) {
             require(displayName.trim() == displayName && displayName.length in 1..40 && displayName.none { it.isISOControl() }) { "Name must be 1-40 printable characters with no outer spaces" }
             validateWakePhrase(wakePhrase)
+            validateGrammarWords(grammarCustomWords)
             require(offlineOnly && listeningMode in setOf("PUSH_TO_TALK", "WAKE_WORD") &&
                 (wakeWordEnabled == (listeningMode == "WAKE_WORD")) &&
                 !autoStartAfterBoot && !overlayEnabled &&

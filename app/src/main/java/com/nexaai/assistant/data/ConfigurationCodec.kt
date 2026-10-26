@@ -24,7 +24,8 @@ object ConfigurationCodec {
     )
     private val settingKeys = setOf("assistantEnabled", "displayName", "offlineOnly", "listeningMode",
         "wakeWordEnabled", "wakePhrase", "autoStartAfterBoot", "overlayEnabled", "ttsEnabled",
-        "confirmationMode", "llmEnabled", "debugLoggingEnabled")
+        "confirmationMode", "llmEnabled", "debugLoggingEnabled", "grammarEnabled", "grammarCustomWords")
+    private val optionalSettingKeys = setOf("grammarEnabled", "grammarCustomWords")
 
     fun encode(config: Configuration): String {
         ConfigurationValidator.validate(config)
@@ -36,6 +37,7 @@ object ConfigurationCodec {
                 put("autoStartAfterBoot", autoStartAfterBoot); put("overlayEnabled", overlayEnabled)
                 put("ttsEnabled", ttsEnabled); put("confirmationMode", confirmationMode)
                 put("llmEnabled", llmEnabled); put("debugLoggingEnabled", debugLoggingEnabled)
+                put("grammarEnabled", grammarEnabled); put("grammarCustomWords", JSONArray(grammarCustomWords))
             }
         }
         val encoded = JSONObject().put("schemaVersion", config.schemaVersion).put("settings", settings)
@@ -56,7 +58,8 @@ object ConfigurationCodec {
             require(root.keys().asSequence().toSet() == setOf("schemaVersion", "settings", "commands")) { "Unknown or missing configuration fields" }
             require(root.get("schemaVersion") is Int && root.getInt("schemaVersion") == 1) { "Unknown schema version; import rejected" }
             val settings = root.getJSONObject("settings")
-            require(settings.keys().asSequence().toSet() == settingKeys) { "Unknown or missing settings fields" }
+            val savedSettingKeys = settings.keys().asSequence().toSet()
+            require(savedSettingKeys.containsAll(settingKeys - optionalSettingKeys) && settingKeys.containsAll(savedSettingKeys)) { "Unknown or missing settings fields" }
             fun boolean(key: String): Boolean {
                 require(settings.get(key) is Boolean) { "$key must be boolean" }
                 return settings.getBoolean(key)
@@ -103,6 +106,14 @@ object ConfigurationCodec {
                 boolean("wakeWordEnabled"), string("wakePhrase"), boolean("autoStartAfterBoot"),
                 boolean("overlayEnabled"), boolean("ttsEnabled"), string("confirmationMode"),
                 boolean("llmEnabled"), boolean("debugLoggingEnabled"),
+                if (settings.has("grammarEnabled")) boolean("grammarEnabled") else false,
+                if (settings.has("grammarCustomWords")) {
+                    val words = settings.getJSONArray("grammarCustomWords")
+                    (0 until words.length()).map { index ->
+                        require(words.get(index) is String) { "Custom grammar entry must be text" }
+                        words.getString(index)
+                    }
+                } else emptyList(),
             ), commands = migratedCommands)
             ConfigurationValidator.validate(config)
             return config
