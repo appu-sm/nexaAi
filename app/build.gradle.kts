@@ -22,7 +22,14 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     testOptions { unitTests.isIncludeAndroidResources = true }
+    sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/nexaArtwork"))
 }
+
+val prepareNexaArtwork by tasks.registering(Copy::class) {
+    from(rootProject.file("images")) { include("*.png"); rename { it.replace('-', '_') } }
+    into(layout.buildDirectory.dir("generated/nexaArtwork/drawable-nodpi"))
+}
+tasks.named("preBuild") { dependsOn(prepareNexaArtwork) }
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))

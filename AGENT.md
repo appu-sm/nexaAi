@@ -818,6 +818,45 @@ limitation report.
 
 ### Milestone 5 --- Overlay and startup
 
+**Implementation decisions (2026-10-29):** Existing overlay/auto-start flags now
+work through the same validated schema-1 DataStore; new optional size/opacity/
+normalized-position fields default safely for older files. All three of overlay,
+auto-start and hands-free remain off on fresh installs. A nonexported, non-sticky
+overlay foreground service owns one `TYPE_APPLICATION_OVERLAY` window, checks
+`Settings.canDrawOverlays`, watches grant changes, clamps/persists dragging, and
+removes the window on disable/destruction. Supplied `images/` artwork provides
+launcher/offline/wake/pressed states. Wake-active means the existing coordinator
+is actually waiting; no model/algorithm/radio mapping is changed. Only a transparent,
+draggable robot icon is shown, without a panel/status strip. Tap when idle requests
+one command through the existing microphone foreground service, without a wake word
+or activity launch. Tap while waiting for wake manually triggers a serialized
+wake-to-command handoff and rearms afterward; tap during command processing stops.
+Hold opens NexaAI; dragging only moves the icon. The body light is recolored light
+green only for reported wake/command listening, leaving other pixels unchanged.
+Stop uses `HandsFreeControl.disable` to cancel the shared
+session, including push-to-talk. No overlay callback dispatches commands.
+
+`BOOT_COMPLETED`/`MY_PACKAGE_REPLACED` are bounded, after-unlock, best-effort
+overlay-only requests gated by valid settings, assistant/overlay/auto-start and
+overlay permission. No direct boot, activity/radio launch, microphone start or
+automatic wake-word resume is implemented. API 28-33 uses an ordinary foreground
+notification; API 34+ declares non-recording `specialUse` with its normal FGS
+permission/subtype. The existing Milestone 4 microphone service also handles explicit
+tap-to-command requests, without changing wake preferences or detector algorithms.
+One-shot requests are deduplicated and have a startup watchdog; service-owned
+capture survives activity lifecycle loss, still uses the coordinator's single
+session gate, and awaits optional TTS before teardown. Explicitly enabled hands-free
+already provides the continuous wake/command loop over other apps. Missing permission
+or blocked background capture is reported without opening MainActivity; normal APK
+restrictions, especially API 30+ background microphone checks, are not bypassed.
+Both services are non-sticky and do
+not schedule retries. Firmware may still suppress delivery or kill normal APKs;
+configured, permission, attached-window and runtime status remain distinct.
+89 host tests, debug build and lint pass after the tap-to-command refinement; see the
+test plan for exact evidence.
+No physical K2501, boot, sleep/ignition, real overlay grant or audio test was run.
+These are outstanding acceptance gates, not verified firmware support.
+
 -   Implement optional overlay with permission flow.
 -   Implement best-effort boot startup and foreground-service behavior
     compatible with Android 9--11.

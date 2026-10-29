@@ -59,6 +59,45 @@ class ShellUiTest {
         compose.onNodeWithTag("alias_error").assertTextContains("Alias collision", substring = true)
     }
 
+    @Test fun overlayPermissionIsExplicitAndIndependentOfStartupAndMicrophone() {
+        navigate("SETTINGS")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("overlay_enabled").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        compose.onNodeWithTag("overlay_enabled").performScrollTo().assertIsOff().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Overlay preference saved").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("overlay_status").performScrollTo().assertTextContains("permission: missing", substring = true)
+        assertNoSettingsLaunched()
+        compose.onNodeWithTag("auto_start").performScrollTo().assertIsOff().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Startup preference saved").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("hands_free_enabled").assertIsOff()
+        navigate("HOME")
+        compose.onNodeWithTag("assistant_state").assertTextContains("Idle", substring = true)
+        compose.onNodeWithTag("microphone").assertIsEnabled()
+        navigate("SETTINGS")
+        compose.onNodeWithTag("overlay_permission").performScrollTo().performClick()
+        compose.runOnIdle {
+            val intent = org.robolectric.Shadows.shadowOf(compose.activity).nextStartedActivity
+            org.junit.Assert.assertEquals(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, intent.action)
+            org.junit.Assert.assertEquals("package:com.nexaai.assistant", intent.data.toString())
+        }
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.waitForIdle()
+        assertNoSettingsLaunched()
+        compose.onNodeWithTag("overlay_status").performScrollTo().assertTextContains("permission: missing", substring = true)
+        compose.onNodeWithTag("overlay_enabled").performScrollTo().assertIsOn().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("overlay_enabled").fetchSemanticsNodes().all { node ->
+            node.config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState] == androidx.compose.ui.state.ToggleableState.Off
+        } }
+    }
+
+    private fun assertNoSettingsLaunched() {
+        compose.runOnIdle { org.junit.Assert.assertNull(org.robolectric.Shadows.shadowOf(compose.activity).nextStartedActivity) }
+    }
+
     @Test fun savesCustomWakePhraseAndRejectsEmptyPhrase() {
         navigate("SETTINGS")
         compose.waitUntil(10_000) {

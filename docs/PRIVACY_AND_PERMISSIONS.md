@@ -32,12 +32,35 @@ local logs to clear. Destructive configuration resets require confirmation.
 	NexaAI never downloads voice data. TTS defaults off, and on-screen results remain
 	available if speech output is disabled or unavailable.
 
-## Deferred permissions
-- Overlay: optional, disabled by default; system grant does not grant microphone access.
-- Boot: optional, best effort, disabled by default; never silent continuous recording.
+## Overlay and Boot Permissions
+- `SYSTEM_ALERT_WINDOW`: optional, disabled by default. A separate, user-tapped
+	Settings route follows an in-context rationale. NexaAI checks the grant before
+	drawing and removes the window when revoked. Permission denial never triggers
+	repeated Settings launches. Overlay access does not grant microphone access.
+- `RECEIVE_BOOT_COMPLETED`: normal permission for best-effort after-unlock startup,
+	disabled by default in app settings. The receiver can also handle this app's
+	package replacement. It only requests an enabled, permitted overlay, never a
+	microphone, radio activity, or intrusive UI. No locked/direct-boot support exists.
+- `FOREGROUND_SERVICE_SPECIAL_USE`: normal permission on API 34+ for the declared
+	non-recording floating-controls foreground service. API 28-33 uses the ordinary
+	FGS API. Its low-importance notification has Open and Disable overlay actions.
+	Notification access is requested on Android 13+ only when opting in, not at boot.
 
-Neither deferred permission is currently declared or requested. No accessibility
-service, root, arbitrary shell execution or hidden vendor API is used.
+Auto-start, overlay and hands-free are independent preferences, all initially off.
+No overlay callback directly executes commands. Tapping when idle requests one
+command from the existing microphone foreground service, without opening Home or
+requiring a wake phrase. Microphone permission must already be granted; denial
+shows an error and does not launch a permission activity. Tapping while waiting
+for wake manually advances the shared session to command capture; tapping during
+command capture/processing stops it. Holding opens Home; dragging only repositions
+the icon. The body's green light reflects reported wake/command capture, not a
+saved preference or permission grant. No second microphone is created, and
+appearing/restoring/importing an overlay never enables wake word. The wake artwork
+indicates actual detector waiting, not simply a saved preference. Permission/window
+or service failures preserve visible push-to-talk and typed-command access.
+
+No accessibility service, root, arbitrary shell execution, privileged permission,
+firmware change, battery-policy bypass or hidden vendor API is used.
 
 ## Hands-Free Foreground Service
 
@@ -48,11 +71,21 @@ permission is denied Android still exposes active foreground services in its tas
 UI. The app always retains Stop and listening status. Microphone privacy indicators
 and while-in-use/background-start restrictions are not bypassed.
 
-The service starts only from the user's explicit visible-app control. Persisted
+The service starts only from explicit visible-app hands-free controls or an explicit
+overlay command tap, subject to Android's microphone/FGS rules. Direct capture may
+be blocked by Android 11+ background microphone restrictions, Android 12+ FGS-start
+restrictions, or Android 14+ while-in-use checks; visible Home push-to-talk remains
+the fallback. Overlay access is not an exemption from all microphone restrictions.
+Persisted
 wake flags or configuration imports never silently start it after launch, reboot,
-process death or permission grant. There is no sticky restart or boot receiver.
-Leaving Home cancels push-to-talk, but not an explicitly enabled hands-free service.
-Stopping/destroying the service cancels the session and releases audio/models.
+process death or permission grant. There is no sticky microphone-service restart;
+the separate overlay-only boot receiver cannot start listening.
+Leaving Home cancels ordinary activity push-to-talk, but not a service-owned command
+or explicitly enabled hands-free. Stopping/destroying the service cancels capture;
+hands-free teardown releases native models, while one-shot commands reuse the
+existing push-to-talk model cache. Explicit hands-free rearms after commands/TTS
+and can continue over other apps, independently of overlay visibility. No new
+permission, network processing, telemetry or sensitive logs are added.
 
 Keyword audio is processed by sherpa-onnx locally, discarded, and never dispatched
 as a command. Wake capture stops before command ASR and remains off throughout
@@ -78,8 +111,9 @@ model download is needed. All transient transcripts/results remain memory-only.
 - The listener service is protected by system `BIND_NOTIFICATION_LISTENER_SERVICE`;
 	the APK cannot grant access to itself. Commands/Diagnostics links to Android
 	notification-access settings after disclosure; nothing is requested automatically.
-	Access can be revoked there; execution rechecks. No notification-posting or
-	privileged `MEDIA_CONTENT_CONTROL` permission is requested.
+	Access can be revoked there; execution rechecks. Notification posting is separately
+	requested only for foreground-service opt-in; no privileged `MEDIA_CONTENT_CONTROL`
+	permission is requested.
 
 The app has no runtime network permission. Offline recognition and TTS code paths
 are implemented, but they have not been physically verified in airplane mode on

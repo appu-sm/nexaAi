@@ -24,8 +24,10 @@ object ConfigurationCodec {
     )
     private val settingKeys = setOf("assistantEnabled", "displayName", "offlineOnly", "listeningMode",
         "wakeWordEnabled", "wakePhrase", "autoStartAfterBoot", "overlayEnabled", "ttsEnabled",
-        "confirmationMode", "llmEnabled", "debugLoggingEnabled", "grammarEnabled", "grammarCustomWords")
-    private val optionalSettingKeys = setOf("grammarEnabled", "grammarCustomWords")
+        "confirmationMode", "llmEnabled", "debugLoggingEnabled", "grammarEnabled", "grammarCustomWords",
+        "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent")
+    private val optionalSettingKeys = setOf("grammarEnabled", "grammarCustomWords",
+        "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent")
 
     fun encode(config: Configuration): String {
         ConfigurationValidator.validate(config)
@@ -38,6 +40,8 @@ object ConfigurationCodec {
                 put("ttsEnabled", ttsEnabled); put("confirmationMode", confirmationMode)
                 put("llmEnabled", llmEnabled); put("debugLoggingEnabled", debugLoggingEnabled)
                 put("grammarEnabled", grammarEnabled); put("grammarCustomWords", JSONArray(grammarCustomWords))
+                put("overlaySizeDp", overlaySizeDp); put("overlayOpacityPercent", overlayOpacityPercent)
+                put("overlayXPercent", overlayXPercent); put("overlayYPercent", overlayYPercent)
             }
         }
         val encoded = JSONObject().put("schemaVersion", config.schemaVersion).put("settings", settings)
@@ -67,6 +71,11 @@ object ConfigurationCodec {
             fun string(key: String): String {
                 require(settings.get(key) is String) { "$key must be text" }
                 return settings.getString(key)
+            }
+            fun integer(key: String, default: Int): Int {
+                if (!settings.has(key)) return default
+                require(settings.get(key) is Int) { "$key must be an integer" }
+                return settings.getInt(key)
             }
             val commands = root.getJSONArray("commands")
             val savedCommands = (0 until commands.length()).map { index ->
@@ -114,6 +123,10 @@ object ConfigurationCodec {
                         words.getString(index)
                     }
                 } else emptyList(),
+                overlaySizeDp = integer("overlaySizeDp", 64),
+                overlayOpacityPercent = integer("overlayOpacityPercent", 90),
+                overlayXPercent = integer("overlayXPercent", 100),
+                overlayYPercent = integer("overlayYPercent", 50),
             ), commands = migratedCommands)
             ConfigurationValidator.validate(config)
             return config

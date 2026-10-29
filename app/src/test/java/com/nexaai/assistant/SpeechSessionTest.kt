@@ -21,6 +21,74 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SpeechSessionTest {
+    @Test fun stoppingServiceOwnedCommandBlocksLateRecognitionDispatch() = runTest {
+        val engine = FakeEngine()
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this) { false }
+        voice.start(fromService = true)
+        runCurrent()
+        voice.cancel()
+        engine.final.complete("volume up")
+        voice.awaitSessionEnd()
+        assertTrue(controller.commands.isEmpty())
+        assertTrue(engine.stopped)
+        assertFalse(voice.requestCommand())
+    }
+
+    @Test fun serviceCommandDoesNotNeedWakeAndSurvivesActivityLifecycleLoss() = runTest {
+        val wake = FakeWake()
+        val engine = FakeEngine()
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this, wake) { false }
+        assertTrue(voice.start(fromService = true))
+        runCurrent()
+        assertTrue(voice.state.value is VoiceState.Listening)
+        voice.cancelForLifecycle()
+        assertTrue(voice.state.value is VoiceState.Listening)
+        assertFalse(voice.start(fromService = true))
+        engine.final.complete("volume up")
+        voice.awaitSessionEnd()
+        assertEquals(CommandId.VOLUME_UP, controller.commands.single().id)
+        assertEquals(0, wake.initializes)
+        assertFalse(voice.handsFreeEnabled.value)
+    }
+
+    @Test fun manualTriggerClosesWakeCaptureBeforeCommandAndRearmsAfterward() = runTest {
+        val events = mutableListOf<String>()
+        val wake = object : WakeWordDetector {
+            override suspend fun initialize(phrase: String) {}
+            override suspend fun awaitDetection() {
+                try { kotlinx.coroutines.awaitCancellation() }
+                finally { events += "wake closed" }
+            }
+            override fun stop() {}
+            override fun release() {}
+        }
+        val engine = object : SpeechRecognizerEngine {
+            override suspend fun initialize() {}
+            override suspend fun recognize(onPartialResult: (String) -> Unit): String {
+                events += "command capture"
+                return "volume up"
+            }
+            override fun stop() {}
+            override fun release() {}
+        }
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this, wake) { false }
+        assertFalse(voice.requestCommand())
+        voice.enableHandsFree("Hey Nexa")
+        runCurrent()
+        assertTrue(voice.requestCommand())
+        assertFalse(voice.requestCommand())
+        runCurrent()
+        assertEquals(listOf("wake closed", "command capture"), events)
+        assertEquals(CommandId.VOLUME_UP, controller.commands.single().id)
+        advanceTimeBy(351)
+        runCurrent()
+        assertTrue(voice.state.value is VoiceState.WaitingForWakeWord)
+        voice.stopAndJoin()
+    }
+
     private class FakeWake : WakeWordDetector {
         var failure: Exception? = null
         var initializes = 0

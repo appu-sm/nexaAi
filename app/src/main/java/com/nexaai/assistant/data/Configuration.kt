@@ -17,6 +17,10 @@ data class AssistantSettings(
     val debugLoggingEnabled: Boolean = false,
     val grammarEnabled: Boolean = false,
     val grammarCustomWords: List<String> = emptyList(),
+    val overlaySizeDp: Int = 64,
+    val overlayOpacityPercent: Int = 90,
+    val overlayXPercent: Int = 100,
+    val overlayYPercent: Int = 50,
 )
 
 enum class CommandId { SET_VOLUME, VOLUME_UP, VOLUME_DOWN, MUTE, UNMUTE, LAUNCH_APP,
@@ -99,9 +103,10 @@ object ConfigurationValidator {
             require(displayName.trim() == displayName && displayName.length in 1..40 && displayName.none { it.isISOControl() }) { "Name must be 1-40 printable characters with no outer spaces" }
             validateWakePhrase(wakePhrase)
             validateGrammarWords(grammarCustomWords)
+            require(overlaySizeDp in 56..96 && overlayOpacityPercent in 50..100 &&
+                overlayXPercent in 0..100 && overlayYPercent in 0..100) { "Invalid overlay size, opacity or position" }
             require(offlineOnly && listeningMode in setOf("PUSH_TO_TALK", "WAKE_WORD") &&
                 (wakeWordEnabled == (listeningMode == "WAKE_WORD")) &&
-                !autoStartAfterBoot && !overlayEnabled &&
                 confirmationMode == "SHORT" && !llmEnabled && !debugLoggingEnabled) {
                 "Configuration enables an unavailable feature; only the app shell is installed"
             }

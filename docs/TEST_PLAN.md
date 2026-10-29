@@ -378,3 +378,177 @@ Stationary device acceptance remains pending:
 5. Test the Settings editor at compact/landscape sizes and invalid/oversized input.
 	Measure native grammar construction latency and peak RAM on the 2 GB target.
 	Verify model/grammar failures stop before capture without silent fallback.
+
+## Milestone 5 Overlay and Startup
+
+### Latest Tap-to-Command Results (2026-10-29)
+
+Final full command `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+--console=plain -Pkotlin.compiler.execution.strategy=in-process` passed:
+**89 tests, zero failures/errors/skips; debug APK assembled (~191 MiB); lint 0
+errors/17 warnings**. Warnings include pinned dependency/target/backup notices,
+three stopService Intent identity false positives, three bitmap KTX style suggestions
+and native touch-to-click delegation. No suppression or new dependency was added.
+Edited runtime files have no editor diagnostics. This supersedes earlier host counts.
+
+Additional tests cover: one command without wake, service-owned capture surviving
+activity lifecycle loss, duplicate starts, cancellation blocking late dispatch,
+manual wake interruption closing capture before ASR and rearming afterward,
+overlay actions never opening an activity on tap, permission/background-start
+failures, repeated pending taps and a missing-service watchdog without retries or
+wake-setting writes. Bitmap tests cover localized green body light, unchanged
+surrounding artwork/alpha and cached normal/pressed variants. Low-alpha hue rounding
+is accounted for while visible-pixel hue is checked. Existing Milestones 0-5 tests
+all pass; real model/recording/radio/firmware behavior is not established by fakes.
+
+Latest physical acceptance additions, all **not run**:
+
+1. Grant mic from Home, import Vosk, leave hands-free off, then navigate to another
+	app and tap the overlay. Expect no NexaAI activity, a microphone foreground
+	notification, green body light during command listening, one final validated
+	command/action and return to idle blue. No wake phrase should be needed.
+2. Tap again during initialization/capture/processing and use notification Stop;
+	check prompt capture release and no late dispatch. Repeated taps must not
+	create parallel recorders or service starts. Drag must neither capture nor stop.
+3. Explicitly enable hands-free with both models, leave NexaAI, and check green
+	wake waiting, wake/command/TTS cycles and rearming. Tap while waiting to bypass
+	wake for one command, then verify automatic return to wake waiting. Stop the
+	continuous session using notification/in-app Stop; command-active tap also stops.
+4. Check normal and pressed artwork: only the small body blue light becomes light
+	green while listening, not the face/arms/background. Loading, processing, speech,
+	idle and unavailable remain blue; compare with real capture/notification state.
+5. Deny/revoke mic, remove models, disable assistant and exercise rejected background
+	mic/FGS starts on actual APIs 28-30 and newer if available. Expect an error without
+	activity launch, no stuck green state/retry loop, and hold-to-open Home fallback.
+	Overlay grant alone must not bypass mic restrictions. Repeat screen-off/sleep/
+	ignition and radio/navigation coexistence checks; record actual results only.
+
+The earlier idle-tap-opens-Home procedure below describes the superseded icon-only
+revision; use these latest tap/hold/color expectations for current APK acceptance.
+
+Host evidence, 2026-10-29: the complete
+`./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
+-Pkotlin.compiler.execution.strategy=in-process` run passed **82 tests, zero
+failures/errors/skips**, debug APK assembled (~191 MiB), and lint had zero errors.
+After the final logical-edge/accessibility drag adjustment, overlay tests, APK and
+lint were rerun successfully: **0 lint errors, 12 warnings** (pinned dependency/
+target/backup notices and two `stopService(Intent)` ImplicitSamInstance false
+positives; no suppressions added). No real device, microphone, keyword/model weights,
+boot broadcast or Android special-access UI is required by these tests.
+
+New/updated coverage:
+
+- ConfigurationTest: overlay/auto-start/wake defaults, independent enabled flags,
+  strict geometry types/ranges, round-trip and missing-field older-file defaults.
+- OverlayPolicyTest: fail-closed startup gates, exact-once add/update/remove,
+  denial/revocation/disable/destruction, failed attachment without self-retry,
+  real voice-state presentation and interface-only callbacks (no capture/dispatch).
+- OverlayRuntimeTest: denied/revoked access, no implicit Settings launch, deduplicated
+  start, thrown service failure and startup watchdog without retries, supported
+  boot-only overlay requests, real Robolectric Android window/status/click/Stop
+  update and removal. Injected boundaries prevent hardware dependency.
+- ShellUiTest: enabling overlay with missing permission safely persists the
+  preference, auto-start remains separate, hands-free stays off and push-to-talk
+  remains enabled. Only tapping the permission button launches the package Settings
+  intent; returning denied does not launch another prompt. Disabling remains usable.
+- All existing parser, controller/radio protocol, configuration/import/persistence,
+  offline speech, wake/audio handoff, manual stop, TTS isolation and compact/
+  landscape UI tests passed in the full run. No core algorithm/mapping was changed.
+
+No new dependency. Changed implementation inventory: app Gradle artwork resource
+task and manifest; MainActivity/NexaAiApplication wiring; Configuration/Codec;
+AssistantViewModel/NexaApp; HandsFreeService Stop error handling; new
+overlay/{OverlayPolicy,OverlayControl,AndroidOverlayWindow,OverlayService,BootReceiver}.
+Tests: ConfigurationTest, ShellUiTest and new OverlayPolicyTest/OverlayRuntimeTest.
+Documentation: README, AGENT, CHANGELOG, Architecture, Device Compatibility,
+Privacy and Permissions, and this test plan. Existing user `images/` assets are
+read by the build, not rewritten. No source audio/transcript logging was introduced.
+
+### Stationary Target Procedure
+
+Record date, operator, installed APK hash/version, actual API/build/firmware, ABI,
+available RAM/storage, notification policy and battery/OEM restrictions for every
+run. Target description NWD_K2501/T5 F52L_UPGZ_S212A70 is supplied, not independently
+verified here. Test only while stationary. Observe real audio/tuner state separately
+from requests and saved preferences. Do not label broadcast registration as a pass.
+
+1. Fresh install/open: confirm overlay, auto-start and wake word all off. Upgrade
+	over a configured build separately; confirm settings, aliases and models survive.
+	With networking disabled, verify typed Help, push-to-talk and existing radio
+	requests before and after each failure test. Record actual tuner effects.
+2. Enable overlay without granting access: no crash, Settings auto-launch or audio.
+	Tap Overlay permission, deny, return, navigate/recreate the activity and wait:
+	status remains missing, with no repeated prompt. Tap again, grant and return:
+	one window and its notification appear; microphone remains off.
+3. Disable/re-enable repeatedly (also via notification); count one window only,
+	no invisible touch-blocking area and no retained window after disable. Keep
+	hands-free independently on/off to confirm disabling overlay does not change it.
+4. Drag while stationary to avoid navigation/radio controls, test edges, saved
+	position, size and opacity; rotate/recreate, change display/font scale if supported,
+	and switch NexaAI/radio/navigation/other apps. Check readable status, >=56 dp
+	touch targets, no keyboard focus stealing and no critical obstruction.
+5. From idle tap the image: existing Home opens, capture does not start until its
+	explicit mic action. Import required assets and explicitly enable hands-free;
+	compare overlay with actual initializing/wake-waiting/command/TTS/error states.
+	Only actual wake waiting may show Wake active artwork. Stop during wake,
+	capture, playback and pending initialization: microphone must release promptly,
+	no delayed command, then push-to-talk must still work. Do not infer silence
+	from artwork alone; observe Android mic state and command outcomes.
+6. Revoke overlay access while idle and during dragging/listening. Window must
+	disappear without crash or duplicate/invisible remnants; speech is independently
+	controllable in app/notification. Regrant and retry manually. Revoke microphone
+	permission separately and verify visible failure and typed/manual fallback.
+7. With auto-start off and overlay previously enabled, perform cold/warm reboot;
+	do not manually open NexaAI until checking whether any service/window started.
+	Expect no NexaAI startup request. Repeat with auto-start and overlay enabled,
+	permitted and assistant enabled: check before/after first unlock and notification/
+	window appearance. No activity/radio launch or microphone capture is expected,
+	even if wake preference was previously enabled. Repeat with overlay off, grant
+	revoked and assistant off: no startup request. Record delay or non-delivery.
+8. Test screen off/on, supported sleep/wake, ignition-off/on and prolonged radio/
+	navigation operation with each service separately and together. Record service
+	kills/suspends, actual mic ownership, notification/window status, latency,
+	RAM/CPU/power/thermal behavior. No wake lock or guaranteed ignition recovery exists.
+9. Force-stop NexaAI, reboot, then manually reopen. No auto-start is promised while
+	force-stopped. Test an APK update with configured overlay, including permission
+	denied. Package update may request only the configured overlay, never listening.
+10. Where feasible trigger denied foreground start/firmware service termination.
+	 Check no repeated restart, truthful stopped/unavailable state, manual launcher
+	 and Refresh / retry recovery, push-to-talk after restoring mic access, and all
+	 existing radio controls. Optional Battery settings may help but cannot prove
+	 exemption. Do not grant root or change firmware to obtain a pass.
+
+### Actual Physical Results
+
+Floating-icon follow-up (2026-10-29): the overlay is now a transparent icon-sized
+window rather than a strip. Host window tests cover square dimensions, no padding,
+idle tap/open, active tap/Stop, hold/open and drag without either action, including
+clamped saved position and cleanup. For procedure steps 4-5, check full text in
+NexaAI/accessibility descriptions and active/offline artwork on the icon; tap to
+stop and hold to open. Verify only the icon's square touch area blocks underlying
+apps, with no trailing invisible strip. Physical validation is still not run.
+The full regression/build/lint command passed again: **83 tests, zero failures or
+errors; debug APK assembled; lint 0 errors/13 warnings**. The additional
+ClickableViewAccessibility warning concerns the touch listener's delegation of
+normal tap/hold events to native ImageButton.onTouchEvent (which invokes the
+existing performClick/long-click handlers); drags cancel native clicks. No warning
+was suppressed. VS Code's known stale test-library classpath diagnostics persist
+despite successful Gradle compilation and test execution.
+
+No physical K2501 was available or tested for Milestone 5. All rows below are
+**not run**, not simulated successes. Fill observations/evidence only after testing.
+
+| Case | Actual result | Evidence |
+| --- | --- | --- |
+| Fresh/upgrade defaults and preserved settings | Not run | No target test |
+| Overlay grant/deny/return/revoke/regrant | Not run | No target test |
+| Exact-once enable/disable, navigation and unobstructed dragging | Not run | No target test |
+| Real listening status, Stop and independent settings | Not run | No target audio test |
+| Auto-start off cold/warm reboot | Not run | No target boot test |
+| Auto-start on after first unlock; no microphone/radio launch | Not run | No target boot test |
+| Revoked permissions/disabled overlay or assistant at boot | Not run | No target test |
+| Screen-off/on and sleep/wake | Not run | No firmware power test |
+| Ignition-off/on and firmware kills/restrictions | Not run | No firmware power test |
+| Force-stop, package update and manual recovery | Not run | No target test |
+| Failed service start leaves push-to-talk/radio usable | Not run | Host fakes only |
+| <=2 GB long-run resources and native audio coexistence | Not run | No target measurements |

@@ -19,7 +19,7 @@ not independently measured device findings.
 | Radio interface | User-supplied verified action/component/key mapping; NexaAI adapter implemented | Installed APK receiver permissions/delivery and end-to-end K2501 results |
 | Volume/media/app launch | Milestone 2 implemented; target unverified | Actual source/app/session tests on head unit |
 | Speech/TTS | Milestone 3 code implemented; target unverified | Real model/voice, airplane-mode, ABI, latency, RAM and lifecycle tests |
-| Overlay/boot | Not implemented; off | Permission and ignition/sleep/reboot tests |
+| Overlay/boot | Milestone 5 implemented; defaults off; target unverified | Real grant/revoke, post-unlock boot, screen/ignition/sleep and service survival tests |
 | Hands-free service/wake word | Implemented; explicitly enabled only, models required; target unverified | Real keyword accuracy, resource, permission and sleep tests |
 | Local LLM | Not implemented; off | Runtime and target measurements |
 
@@ -168,3 +168,46 @@ conversation required login and could not be used as additional evidence.
 Final host gates: 60 tests passed (none failed/skipped), debug APK assembled,
 lint zero errors/11 warnings. The multi-ABI debug APK is about 191 MiB without
 models. This is not a RAM/power measurement; runtime suitability remains open.
+
+## Milestone 5 Host Evidence (2026-10-29)
+
+Optional overlay and best-effort, after-unlock startup are implemented for the
+unchanged min API 28 / target API 35 normal APK. Host gates pass: 89 tests, no
+failures/errors/skips; debug APK assembled (~191 MiB, not RAM evidence); lint has
+zero errors. Final warning count is recorded in the test plan. No new dependencies,
+privileges, radio mappings, speech engine or wake detector changes were introduced.
+
+`SYSTEM_ALERT_WINDOW` needs an explicit Android Settings grant. The floating window
+has saved position/appearance and routes Open/Stop to existing application actions.
+The non-recording overlay service uses a foreground notification; API 34+ declares
+the normal special-use FGS permission/type. Hands-free remains its separate, explicit
+microphone service, sharing the existing single speech coordinator. Boot/update
+only requests an enabled overlay with valid settings and permission after unlock;
+it never launches radio/UI or starts/resumes a microphone. No direct boot is claimed.
+
+All target behavior remains **not tested** on NWD_K2501/T5 F52L_UPGZ_S212A70:
+special-access screen availability, grant/revoke delivery, unobstructed placement,
+foreground notification policy, boot broadcast delivery, native audio/status timing,
+screen-off/on, sleep, ignition-off/on, and actual RAM/CPU/service survival. Host
+Robolectric/fake tests are not physical firmware evidence. See the Milestone 5
+procedure/result table in TEST_PLAN.md; every physical row is marked not run.
+
+Normal APK limitations cannot be repaired with application code alone: force-stop
+blocks automatic startup until manually opened; credential-encrypted settings need
+unlock; OEM autostart/battery/task policies may suppress broadcasts or kill/suspend
+foreground services. No root/system permission, firmware change, wake lock or retry
+loop is attempted. Open NexaAI from the launcher and retry the overlay manually;
+use visible push-to-talk if overlay/background operation is blocked. Optional battery
+settings guidance does not establish an exemption or guaranteed persistence.
+
+Tap-to-command follow-up: idle overlay tap now requests one command through the
+existing microphone FGS without opening Home or requiring a wake phrase. Wake-waiting
+tap closes wake capture before ASR and returns to the opted-in loop afterward.
+Command-active tap stops; hold opens Home. Body indicator becomes light green only
+for coordinator-reported wake/command listening. Pixel/fake-audio tests passed, not
+physical color/recording checks. On API 30+ a background-started microphone FGS may
+not have microphone access; API 31+/34+ add service-start/while-in-use restrictions.
+The normal APK cannot guarantee direct capture from an overlay on those versions.
+Permission/start/audio failures remain visible; use Home push-to-talk when blocked.
+Continuous wake operation needs explicit hands-free opt-in and both models. No
+overlay, microphone, latency, sleep/ignition or resource result is physically verified.

@@ -33,8 +33,8 @@ success messages. No DI framework or database is needed for this scope.
 
 Schema version 1 uses safe defaults: assistant enabled, name NexaAI, offline-only
 true, push-to-talk, short confirmation preference (inactive). TTS, wake word,
-overlay, startup, debugging, and local LLM remain unavailable/off until backed
-by real implementations. TTS defaults off rather than the conceptual example's
+overlay and startup are implemented with explicit opt-in and default off;
+debugging and local LLM remain unavailable. TTS defaults off rather than the conceptual example's
 true value: no voice has been verified offline. Only display name and assistant
 preference are editable general settings in this shell.
 Future capability values must not be trusted from imported configuration.
@@ -225,3 +225,101 @@ share bounded staging, traversal rejection and safe replacement. See Models for
 licenses and exact assets. Import validates a single English BPE keyword without
 requiring the current setting to match; detector initialization enforces a match
 with the saved configurable wake phrase. Text changes do not regenerate tokens.
+
+## Milestone 5 Overlay and Startup
+
+```text
+Settings -> existing ConfigurationRepository -> overlay preferences
+Activity resume / explicit retry -> OverlayControl -> OverlayService
+    -> OverlayController -> AndroidOverlayWindow -> one WindowManager view
+    <- existing VoiceState + requested/actual hands-free flows
+Idle tap -> HandsFreeControl.listenOnce -> existing microphone FGS -> coordinator
+Wake-waiting tap -> coordinator.requestCommand -> ordered wake/ASR handoff
+Command-active tap -> HandsFreeControl.disable; hold -> MainActivity Home
+After-unlock boot/update -> StartupPolicy gates -> OverlayControl (no voice start)
+```
+
+`OverlayControl` owns service-request/runtime status, not listening state. Its
+pending-start gate and 10-second watchdog surface failure without retrying.
+`OverlayController` is a constructor-injected, idempotent window lifecycle;
+unit tests substitute an `OverlayWindow`. Android uses `TYPE_APPLICATION_OVERLAY`,
+nonfocusable/nontouch-modal flags, visible opacity >=50%, and >=56 dp controls.
+The transparent window contains only one square robot ImageButton at the saved
+icon size; no rectangular panel, text strip or separate Stop button is drawn.
+Tap requests a command when idle or waiting for wake; during command processing
+it cancels the session. Hold opens Home. Crossing touch slop cancels native click/long-click handling before moving
+the window; release persists the clamped position without invoking actions.
+Native pressed-state artwork and accessibility descriptions expose the current
+state/action; full textual listening status remains in the main activity.
+Dragging uses logical-edge bounded coordinates, excludes the lower 48 dp and a
+16 dp edge margin, and stores percentages for display changes. These margins do
+not establish automotive safety; stationary placement and target checks are required.
+Actual wake waiting selects wake artwork; initializing, command capture, speaking,
+errors and stopped states do not masquerade as an active detector. All four user
+PNG assets are copied/renamed as Android drawables by a Gradle resource task; the
+source artwork is not rewritten. Existing vector remains the notification small icon.
+
+`OverlayArtwork` caches four small listening variants. It recolors cyan/blue pixels
+only inside the body-indicator region (38-64% width, 70-96% height), retaining alpha,
+shading and all pixels outside that region. Only `WaitingForWakeWord` in an actual
+hands-free session and `VoiceState.Listening` set `microphoneActive`; initializing,
+pending starts, processing, speech and failures keep the blue indicator. Pixel
+tests cover normal/pressed offline/wake variants and transparent edges.
+
+`HandsFreeControl.listenOnce` rechecks microphone access and valid assistant
+configuration, deduplicates pending starts, and requests the same nonexported
+microphone service with a command-only action. It never writes wake preferences
+or launches an activity. The 10-second watchdog reports a missing service without
+retrying; failures are exposed in voice state and a changed-error overlay Toast.
+The service foregrounds with the microphone type before capture, rechecks permission
+and latest configuration, starts `SpeechSessionCoordinator.start(fromService=true)`,
+waits for the session/optional TTS to finish, then stops. `cancelForLifecycle` leaves
+this service-owned capture running, while ordinary activity push-to-talk retains
+its cancellation behavior. Final transcripts still use prepare/revalidate/execute.
+
+During hands-free wake waiting, a CompletableDeferred manual trigger races keyword
+detection in a structured child scope. The losing wake wait is cancelled/stopped
+and joined before Vosk capture starts; both paths produce exactly one command
+session and the existing cooldown/TTS barrier precedes wake rearming. No second
+detector, recorder, wake algorithm or command engine is added. Continuous operation
+still requires the existing explicit hands-free opt-in. Background microphone/FGS
+restrictions on newer APIs may reject a direct tap start; this never opens Home
+automatically or weakens permissions. Hold-to-open visible push-to-talk is fallback.
+
+Only the separate permission button opens Android special access. Activity resume
+rechecks the grant without prompting. Service AppOps callbacks, configuration/display
+changes, state changes and start-time checks recheck permission; loss removes the
+view and stops the overlay service. No polling, animation, wake lock, recorder or
+second command engine is added. Window/drag integration failures stop rather than
+looping. Disabling overlay does not stop independently enabled hands-free.
+
+The notification channel is low importance, with Open and Disable overlay actions.
+API 34+ uses `FOREGROUND_SERVICE_SPECIAL_USE` and the manifest subtype for persistent
+user-enabled floating controls; older APIs use ordinary foreground service behavior.
+This is not a microphone service type or permission exemption. Boot work and overlay
+creation do not call speech initialization/capture; the shared coordinator may be
+constructed to observe state, but native models remain deferred to existing actions.
+
+Boot receiver accepts only `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED`, checks
+`UserManager.isUserUnlocked`, and uses `goAsync` with a six-second settings deadline.
+No direct-boot receiver or device-protected duplicate settings exist. Valid saved
+assistant + auto-start + overlay + current overlay grant are all required. The
+only permitted request is the non-recording overlay. Existing wake preference is
+never a request to resume recording. Both services return `START_NOT_STICKY`;
+no scheduled restart or boot activity/radio launch exists. Startup status describes
+only this process's observed broadcast/request; a fresh process explicitly says
+not observed/unverified. Opening the app is the manual fallback after force-stop,
+firmware termination or denied foreground starts.
+
+Schema 1 adds optional, strictly typed/range-validated fields: `overlaySizeDp`
+(56-96, default 64), `overlayOpacityPercent` (50-100, default 90),
+`overlayXPercent`/`overlayYPercent` (0-100, defaults 100/50). Missing fields migrate
+in memory without overwriting existing names, aliases or wake preferences; malformed
+values continue to fail closed. Confirmed imports may configure overlay/startup but
+cannot grant permissions or start the microphone. No new dependency is introduced.
+
+Platform references: [overlay windows](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_APPLICATION_OVERLAY),
+[overlay special access](https://developer.android.com/reference/android/provider/Settings#canDrawOverlays(android.content.Context)),
+[special-use FGS](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use),
+[FGS background restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start),
+[direct boot](https://developer.android.com/privacy-and-security/direct-boot).

@@ -31,7 +31,8 @@ Milestone 2 adds deterministic command execution and safe Android controls.
 Milestone 3 adds offline push-to-talk recognition and optional offline TTS.
 Milestone 4 includes the verified radio request adapter and the requested offline
 wake-word/hands-free extension. K2501 APK-level receiver access and real wake-word
-performance remain device acceptance gates. Overlay and boot startup are deferred.
+performance remain device acceptance gates. Milestone 5 adds optional floating
+controls and best-effort overlay startup after unlock; target behavior is unverified.
 An enabled alias is not proof of hardware support. Do not use this
 development build as an operational driving assistant.
 
@@ -89,8 +90,9 @@ and documented in [Models](docs/MODELS.md). Microphone permission is requested o
 after tapping the Home mic or enabling hands-free. Hands-free declares microphone
 foreground-service permissions and requests notification permission on Android 13+.
 Notification denial does not grant hidden recording: Android's foreground-service
-task UI still applies, and NexaAI retains an in-app Stop control. Internet, overlay
-and boot permissions remain absent. Normal `MODIFY_AUDIO_SETTINGS` is
+task UI still applies, and NexaAI retains an in-app Stop control. Overlay
+permission is never granted automatically. Internet permission remains absent;
+optional overlay and boot permissions are declared. Normal `MODIFY_AUDIO_SETTINGS` is
 declared. Media uses a
 system-protected notification-listener service with optional special access:
 the access is broad, but NexaAI does not inspect or store notification contents.
@@ -102,6 +104,66 @@ tuner behavior still require the installed APK and K2501. Hands-free requires bo
 local models; it fails visibly back to push-to-talk when initialization fails.
 There is no automatic listening after reboot or process death, even when the last
 saved preference was hands-free. Re-enable it explicitly from the visible app.
+
+## Overlay and startup setup
+
+All three switches start **off**: floating overlay, auto-start, and hands-free.
+Existing settings survive upgrades. Overlay and startup never enable wake word.
+
+1. In Settings, enable Floating overlay. Read the draw-over-other-apps rationale
+    and tap **Overlay permission** to grant Android special access. Denial is safe;
+    no permission screen opens automatically. Returning to NexaAI rechecks access.
+2. The supplied robot artwork is used for the launcher and overlay. Drag its icon
+    to an unobstructive edge while stationary; position, size (56-96 dp), and
+    opacity (50-100%) persist. Only the robot icon floats over other apps, without
+    a panel or status strip. Tap when idle to capture one command directly, without
+    opening Home or saying a wake word. The final recognized command uses the
+    existing validated command engine and executes once. Tap during command
+    capture/processing to stop; hold opens NexaAI. Dragging only moves the icon.
+    Grant microphone access once using Home first and import the Vosk model. Missing
+    permission/model or a blocked service produces a visible error, not an automatic
+    activity launch. The small body light turns light green during reported wake or
+    command listening, and returns to blue while idle, loading, processing, speaking
+    or unavailable. Full status stays in the app and accessible icon description.
+    Simply displaying the overlay never captures audio or creates a second recorder.
+3. Optionally enable **Auto-start overlay after boot**. After unlock, boot and
+    package-update broadcasts may request an enabled overlay with granted permission.
+    Startup does not open an activity, radio, or microphone service. There is no
+    automatic wake-word resume, even when its preference was previously enabled.
+4. Settings/Diagnostics distinguish configured switches, current permission,
+    running service, attached window, and a boot/update observed in this process.
+    A request or registered receiver is not proof of boot reliability or uptime.
+5. For continuous wake-word/command listening over other apps, explicitly enable
+    the existing hands-free switch from NexaAI after installing both models.
+    It rearms after each command and optional spoken response. Tapping the icon
+    while waiting for the wake phrase skips that wait for one command, then resumes
+    the loop. Stop continuous listening with the notification or in-app Stop;
+    tapping during command capture also stops the session. Overlay and hands-free
+    remain independent opt-ins; no automatic microphone resume occurs after reboot.
+
+Direct overlay capture uses the existing microphone foreground service and its
+ongoing Stop notification. Android 11+ background-microphone restrictions, Android
+12+ FGS-start restrictions and Android 14+ while-in-use checks may reject it even
+with overlay permission. A normal APK cannot bypass these checks. If denied, hold
+the icon, open Home and use visible push-to-talk. Target firmware capture and
+continuous-listening reliability still require stationary physical testing.
+
+The overlay uses its own non-recording foreground notification with Disable overlay;
+hands-free retains its existing microphone notification and Stop action. On API 34+
+the overlay service declares the documented `specialUse` type/permission; API 28-33
+uses the ordinary foreground-service API. Android 13+ notification access is
+requested on opt-in, not at boot; denial does not grant background microphone access.
+Overlay permission can be revoked in Android special access; NexaAI removes the
+window and leaves push-to-talk available. Disable overlay and hands-free independently.
+
+Startup is best-effort. The app must have been opened at least once; force-stop
+blocks broadcasts until opened again. There is no direct-boot/locked-storage support,
+sticky restart, wake lock, battery-policy bypass, or microphone boot start. F52L
+firmware may suppress boot delivery or kill/suspend normal APK services during
+screen-off, sleep or ignition cycles. Open NexaAI manually and use **Refresh / retry
+overlay** after failures; restore permission if needed. Battery settings are optional
+guidance, not a guarantee. Never change firmware privileges to satisfy this feature.
+See the [physical acceptance procedure and actual result record](docs/TEST_PLAN.md#milestone-5-overlay-and-startup).
 
 ## Verification and troubleshooting
 
@@ -125,6 +187,9 @@ The toolchain is intentionally pinned rather than upgraded without testing.
 - Hands-free service/microphone error: stop listening, restore microphone access,
         and retry while NexaAI is visible. If firmware prevents background listening,
         leave hands-free off and use push-to-talk. Do not enable automatic restarts.
+- Overlay missing: check its saved switch, assistant switch and Android overlay
+    grant, then open NexaAI and tap Refresh / retry overlay. Do not infer activity
+    from a saved wake flag. If firmware blocks overlays, leave it off and use Home.
 - Missing/corrupt speech model: import the official ZIP from the Models screen; no
     automatic download or online fallback is attempted.
 - Radio unavailable: confirm `com.nwd.radio` is installed and inspect the returned

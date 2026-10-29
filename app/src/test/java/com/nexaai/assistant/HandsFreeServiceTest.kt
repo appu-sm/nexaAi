@@ -13,6 +13,8 @@ import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +25,67 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class HandsFreeServiceTest {
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun repeatedOverlayTapsAndMissingServiceStartupAreBounded() = kotlinx.coroutines.test.runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        shadowOf(context as android.app.Application).grantPermissions(Manifest.permission.RECORD_AUDIO)
+        val store = object : androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+            override val data = kotlinx.coroutines.flow.flowOf(androidx.datastore.preferences.core.emptyPreferences())
+            override suspend fun updateData(transform: suspend (androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences): androidx.datastore.preferences.core.Preferences =
+                error("A tap must not alter persisted wake settings")
+        }
+        val repository = ConfigurationRepository(store)
+        val voice = voice(backgroundScope)
+        var starts = 0
+        val control = HandsFreeControl(context, repository, voice, backgroundScope, startCommandService = { starts++ })
+        repeat(3) { control.listenOnce() }
+        runCurrent()
+        assertEquals(1, starts)
+        assertTrue(control.commandPending.value)
+        advanceTimeBy(10_001)
+        runCurrent()
+        assertFalse(control.commandPending.value)
+        assertTrue(voice.state.value is VoiceState.Error)
+        advanceTimeBy(60_000)
+        assertEquals(1, starts)
+        assertFalse(control.enabled.value)
+        control.listenOnce()
+        runCurrent()
+        assertEquals(2, starts)
+        control.commandStarted()
+        advanceTimeBy(60_000)
+        assertEquals(2, starts)
+        assertFalse(control.commandPending.value)
+    }
+
+    @Test fun overlayCommandPermissionAndStartFailureDoNotEnableWakeWordOrOpenActivity() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("overlay-command", ".preferences_pb").apply { delete() }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val repository = ConfigurationRepository(PreferenceDataStoreFactory.create(scope = scope, produceFile = { file }))
+            val voice = voice(scope)
+            var starts = 0
+            val control = HandsFreeControl(context, repository, voice, scope, startCommandService = {
+                starts++
+                throw SecurityException("Background microphone denied")
+            })
+            shadowOf(context as android.app.Application).denyPermissions(Manifest.permission.RECORD_AUDIO)
+            control.listenOnce()
+            assertEquals(0, starts)
+            assertTrue(voice.state.value is VoiceState.Error)
+            shadowOf(context).grantPermissions(Manifest.permission.RECORD_AUDIO)
+            control.listenOnce()
+            withTimeout(5_000) { control.commandPending.first { !it } }
+            assertEquals(1, starts)
+            assertFalse(control.enabled.value)
+            assertFalse(repository.snapshots.first().configuration.settings.wakeWordEnabled)
+            assertNull(shadowOf(context).nextStartedActivity)
+            assertTrue(voice.state.value is VoiceState.Error)
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin(); file.delete() }
+    }
+
     private fun voice(scope: CoroutineScope): SpeechSessionCoordinator {
         val controller = object : VolumeController, AppLauncher, MediaController {
             override suspend fun check(command: AssistantCommand): CommandResult? = null

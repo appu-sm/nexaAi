@@ -7,6 +7,8 @@ import com.nexaai.assistant.data.*
 import com.nexaai.assistant.domain.*
 import com.nexaai.assistant.execution.*
 import com.nexaai.assistant.speech.*
+import com.nexaai.assistant.overlay.OverlayControl
+import com.nexaai.assistant.overlay.OverlayRuntime
 import java.io.IOException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,6 +27,7 @@ data class AssistantUiState(
     val speechOutput: SpeechOutputState = SpeechOutputState.Initializing,
     val modelInstalled: Boolean = false,
     val handsFreeEnabled: Boolean = false,
+    val overlay: OverlayRuntime = OverlayRuntime(),
 )
 
 data class CommandUiState(
@@ -48,6 +51,7 @@ class AssistantViewModel(
     private val sharedVoice: SpeechSessionCoordinator? = null,
     private val handsFreeControl: HandsFreeControl? = null,
     private val wakeInstaller: SpeechModelInstaller? = null,
+    private val overlayControl: OverlayControl? = null,
 ) : ViewModel() {
     private val busy = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
@@ -67,8 +71,9 @@ class AssistantViewModel(
     private val voiceUiState = combine(baseState, voiceState, outputState, modelInstalled) { shell, voice, speech, installed ->
         shell.copy(voice = voice, speechOutput = speech, modelInstalled = installed)
     }
-    val state = combine(voiceUiState, handsFreeControl?.enabled ?: MutableStateFlow(false)) { shell, enabled ->
-        shell.copy(handsFreeEnabled = enabled)
+    val state = combine(voiceUiState, handsFreeControl?.enabled ?: MutableStateFlow(false),
+        overlayControl?.state ?: MutableStateFlow(OverlayRuntime())) { shell, enabled, overlay ->
+        shell.copy(handsFreeEnabled = enabled, overlay = overlay)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AssistantUiState())
 
     init {
@@ -138,6 +143,21 @@ class AssistantViewModel(
         repository.update { it.copy(settings = it.settings.copy(ttsEnabled = enabled)) }
     }
 
+    fun setOverlayEnabled(enabled: Boolean) = perform("Overlay preference saved") {
+        repository.update { it.copy(settings = it.settings.copy(overlayEnabled = enabled)) }
+        overlayControl?.refreshFromActivity()
+    }
+
+    fun setAutoStart(enabled: Boolean) = perform("Startup preference saved") {
+        repository.update { it.copy(settings = it.settings.copy(autoStartAfterBoot = enabled)) }
+    }
+
+    fun setOverlayAppearance(size: Int, opacity: Int) = perform("Overlay appearance saved") {
+        repository.update { it.copy(settings = it.settings.copy(overlaySizeDp = size, overlayOpacityPercent = opacity)) }
+    }
+
+    fun refreshOverlay() { overlayControl?.refreshFromActivity() }
+
     fun saveAllowedApp(packageName: String, aliases: List<String>) = perform("App allowlist saved") {
         val engine = runtime ?: throw IllegalArgumentException("App controller unavailable")
         require(engine.appDevice.installedApps().any { it.packageName == packageName }) { "Select a currently installed app" }
@@ -189,6 +209,7 @@ class AssistantViewModel(
 
     fun setAssistantEnabled(enabled: Boolean) = perform("Assistant preference saved") {
         repository.update { it.copy(settings = it.settings.copy(assistantEnabled = enabled)) }
+        overlayControl?.refreshFromActivity()
     }
 
     fun setCommandEnabled(id: CommandId, enabled: Boolean) = perform("Command preference saved") {
@@ -205,6 +226,7 @@ class AssistantViewModel(
 
     fun resetSettings() = perform("Settings reset") {
         repository.update { it.copy(settings = AssistantSettings()) }
+        overlayControl?.refreshFromActivity()
     }
 
     fun resetCommands() = perform("Commands reset") {
@@ -214,6 +236,7 @@ class AssistantViewModel(
     fun resetAll() = perform("Safe defaults restored") {
         runtime?.allowlist?.reset()
         repository.replace(Configuration())
+        overlayControl?.refreshFromActivity()
     }
     fun importDocument(uri: Uri) = perform("Import validated. Review before applying.") {
         preview.value = documents.read(uri)
@@ -223,6 +246,7 @@ class AssistantViewModel(
         val imported = preview.value ?: return
         perform("Configuration imported") {
             repository.replace(imported)
+            overlayControl?.refreshFromActivity()
             preview.value = null
         }
     }

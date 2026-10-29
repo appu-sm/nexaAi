@@ -40,6 +40,7 @@ import com.nexaai.assistant.diagnostics.DeviceFacts
 import com.nexaai.assistant.domain.CommandResult
 import com.nexaai.assistant.execution.InstalledApp
 import com.nexaai.assistant.speech.*
+import com.nexaai.assistant.overlay.OverlayRuntime
 import android.content.Intent
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
@@ -64,12 +65,14 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
     var reset by rememberSaveable { mutableStateOf<String?>(null) }
     var microphoneRequestAttempted by rememberSaveable { mutableStateOf(false) }
     var pendingHandsFree by rememberSaveable { mutableStateOf(false) }
+    var notificationAction by rememberSaveable { mutableStateOf("HANDS_FREE") }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        viewModel.setHandsFreeEnabled(true)
+        if (notificationAction == "OVERLAY") viewModel.setOverlayEnabled(true) else viewModel.setHandsFreeEnabled(true)
     }
     val enableHandsFree = {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationAction = "HANDS_FREE"
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else viewModel.setHandsFreeEnabled(true)
     }
@@ -201,13 +204,21 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                     { reset = "settings" }, { importer.launch(arrayOf("application/json", "text/plain")) },
                                     { exporter.launch("nexaai-configuration.json") }, viewModel::setTtsEnabled, state.speechOutput,
                                     state.handsFreeEnabled, viewModel::setWakePhrase,
-                                    viewModel::setGrammarEnabled, viewModel::setGrammarWords)
+                                    viewModel::setGrammarEnabled, viewModel::setGrammarWords,
+                                    state.overlay, { enabled ->
+                                        if (enabled && android.os.Build.VERSION.SDK_INT >= 33 &&
+                                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                            notificationAction = "OVERLAY"
+                                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        } else viewModel.setOverlayEnabled(enabled)
+                                    }, viewModel::setAutoStart, viewModel::setOverlayAppearance, viewModel::refreshOverlay)
                             }
                             composable(Destination.MODELS.name) { ModelsScreen(state.modelInstalled, state.voice,
                                 configuration.settings.wakePhrase, state.handsFreeEnabled, { wakeImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
                                 modelImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                             } }
-                            composable(Destination.DIAGNOSTICS.name) { DiagnosticsScreen(device, state.controls, state.modelInstalled, state.speechOutput, viewModel::refreshControls) }
+                            composable(Destination.DIAGNOSTICS.name) { DiagnosticsScreen(device, state.controls, state.modelInstalled, state.speechOutput,
+                                configuration.settings, state.overlay) { viewModel.refreshControls(); viewModel.refreshOverlay() } }
                             composable(Destination.HELP.name) { HelpScreen(configuration.settings) }
                         }
                     }
@@ -227,7 +238,7 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
             val changed = imported.commands.count { command -> configuration.commands.find { it.id == command.id } != command }
             AlertDialog(onDismissRequest = viewModel::cancelImport, title = { Text("Review configuration import") },
                 text = { Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Schema ${imported.schemaVersion}\nName: ${imported.settings.displayName}\nAssistant: ${if (imported.settings.assistantEnabled) "enabled" else "disabled"}\n$changed command definitions changed\n${imported.commands.count { it.enabled }} commands enabled\nEnabled commands may execute supported device actions. Microphone remains off. App allowlist is not imported.")
+                    Text("Schema ${imported.schemaVersion}\nName: ${imported.settings.displayName}\nAssistant: ${if (imported.settings.assistantEnabled) "enabled" else "disabled"}\nOverlay: ${imported.settings.overlayEnabled}\nAuto-start overlay: ${imported.settings.autoStartAfterBoot}\n$changed command definitions changed\n${imported.commands.count { it.enabled }} commands enabled\nEnabled commands may execute supported device actions. Overlay requires separate Android permission. Microphone remains off. App allowlist is not imported.")
                     imported.commands.filter { command -> configuration.commands.find { it.id == command.id } != command }.forEach {
                         Text("${CommandCatalogue.spec(it.id).title}: ${if (it.enabled) "enabled" else "disabled"}; ${it.aliases.joinToString()}", Modifier.padding(top = 8.dp))
                     }
@@ -426,7 +437,9 @@ private fun AliasDialog(definition: CommandDefinition, configuration: Configurat
 private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setName: (String) -> Unit,
     setEnabled: (Boolean) -> Unit, reset: () -> Unit, importConfig: () -> Unit, exportConfig: () -> Unit,
     setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState, handsFree: Boolean, setWakePhrase: (String) -> Unit,
-    setGrammarEnabled: (Boolean) -> Unit, setGrammarWords: (List<String>) -> Unit) {
+    setGrammarEnabled: (Boolean) -> Unit, setGrammarWords: (List<String>) -> Unit,
+    overlay: OverlayRuntime, setOverlayEnabled: (Boolean) -> Unit, setAutoStart: (Boolean) -> Unit,
+    setOverlayAppearance: (Int, Int) -> Unit, refreshOverlay: () -> Unit) {
     var name by rememberSaveable(settings.displayName) { mutableStateOf(settings.displayName) }
     var wakePhrase by rememberSaveable(settings.wakePhrase) { mutableStateOf(settings.wakePhrase) }
     val phraseError = runCatching { ConfigurationValidator.validateWakePhrase(wakePhrase.trim()) }.exceptionOrNull()?.message
@@ -468,8 +481,7 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
             modifier = Modifier.testTag("save_grammar_words")) {
             Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Save custom words")
         }
-        Section("Startup and service", "Hands-free uses a microphone foreground service with an ongoing notification. Automatic startup and resume after reboot or process death are off. Screen-off and firmware sleep behavior are unverified.")
-        Section("Overlay", "Off. No overlay implementation or permission requested (Milestone 5). Size, opacity, position and tap controls unavailable.")
+        OverlaySettings(settings, editable, overlay, setOverlayEnabled, setAutoStart, setOverlayAppearance, refreshOverlay)
         Section("Voice response", when (speechOutput) {
             SpeechOutputState.Initializing -> "Checking installed English voices..."
             SpeechOutputState.Ready -> "An installed English offline voice is available. Responses replace any current utterance."
@@ -510,10 +522,11 @@ private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, wakePhrase:
 
 @Composable
 private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, modelInstalled: Boolean,
-    speechOutput: SpeechOutputState, refresh: () -> Unit) = Page("Diagnostics") {
+    speechOutput: SpeechOutputState, settings: AssistantSettings, overlay: OverlayRuntime, refresh: () -> Unit) = Page("Diagnostics") {
     Section("This device", "${device.manufacturer} / ${device.model}\nAndroid ${device.androidVersion}, API ${device.api}")
-    Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested on explicit listening action"}.\nMicrophone foreground-service and notification permissions declared. Internet, overlay and boot permissions: not declared.")
-    Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition: use Home push-to-talk\nHands-free: explicit-start microphone service; target unverified\nOverlay/boot: not implemented")
+    Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested on explicit listening action"}.\nMicrophone/overlay foreground-service, notification and boot permissions declared. Overlay grant: ${overlay.permission}. Internet permission: not declared.")
+    Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition: use Home push-to-talk\nHands-free: explicit-start microphone service; target unverified")
+    Section("Overlay and startup", "Overlay configured: ${settings.overlayEnabled}\nOverlay service running: ${overlay.running}\nWindow attached: ${overlay.visible}\n${overlay.message}\nAuto-start configured: ${settings.autoStartAfterBoot}\n${overlay.startup}\nWake preference: ${settings.wakeWordEnabled}; saved preference is not proof of microphone activity.")
     Section("Speech", "Vosk model: ${if (modelInstalled) "installed" else "missing"}\nSpeech output: ${when (speechOutput) {
         SpeechOutputState.Initializing -> "checking"
         SpeechOutputState.Ready -> "offline English voice available"
@@ -531,7 +544,58 @@ private fun HelpScreen(settings: AssistantSettings) = Page("Help and privacy") {
     Section("Offline setup", "Import the official Vosk English small-model ZIP from Models. TTS uses only an installed English offline Android voice; no voice data is downloaded automatically.")
     Section("Normal APK limits", "No force-stop of other apps, hidden radio API, root or system privilege. Radio and media availability require real firmware/app evidence.")
     Section("Your data", "Audio is processed locally and not saved or uploaded. Transcripts/results remain in memory only. Settings, command definitions and the app allowlist stay in private app storage. No cloud APIs, telemetry or analytics.")
-    Section("Stop and disable", "Stop hands-free using the listening switch, Stop control, or notification. Leaving Home cancels push-to-talk, not an enabled hands-free session. Spoken results can be muted in Settings. Overlay, boot startup and LLM remain off.")
+    Section("Stop and disable", "Stop hands-free using the listening switch, overlay Stop control, or notification. Leaving Home cancels push-to-talk, not an enabled hands-free session. Overlay and auto-start are independent Settings switches, initially off. Auto-start only requests an enabled overlay after unlock, never listening. LLM remains off.")
+}
+
+@Composable
+private fun OverlaySettings(settings: AssistantSettings, editable: Boolean, runtime: OverlayRuntime,
+    setEnabled: (Boolean) -> Unit, setAutoStart: (Boolean) -> Unit, setAppearance: (Int, Int) -> Unit,
+    refresh: () -> Unit) {
+    val context = LocalContext.current
+    var error by remember { mutableStateOf<String?>(null) }
+    var size by rememberSaveable(settings.overlaySizeDp) { mutableFloatStateOf(settings.overlaySizeDp.toFloat()) }
+    var opacity by rememberSaveable(settings.overlayOpacityPercent) { mutableFloatStateOf(settings.overlayOpacityPercent.toFloat()) }
+    Section("Overlay", "Draw-over-other-apps access is optional and keeps floating NexaAI controls available over radio/navigation. It does not grant microphone access. Notifications identify each foreground service; notification denial does not allow hidden recording.")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Floating overlay", Modifier.weight(1f))
+        Switch(settings.overlayEnabled, setEnabled, enabled = editable,
+            modifier = Modifier.testTag("overlay_enabled").semantics { contentDescription = "Floating overlay" })
+    }
+    Text("Overlay permission: ${if (runtime.permission) "granted" else "missing"}\nService: ${if (runtime.running) "running" else "stopped"}; window: ${if (runtime.visible) "attached" else "not attached"}\n${runtime.message}",
+        Modifier.testTag("overlay_status"))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = {
+            try {
+                context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri()))
+            } catch (_: ActivityNotFoundException) { error = "Overlay permission settings are unavailable on this firmware. Use Android Settings > Apps > Special access."
+            } catch (_: SecurityException) { error = "Android denied opening overlay settings. Use Android Settings manually." }
+        }, modifier = Modifier.testTag("overlay_permission")) { Icon(Icons.Default.Settings, null); Text("Overlay permission") }
+        TextButton(onClick = refresh, enabled = editable, modifier = Modifier.testTag("overlay_retry")) {
+            Icon(Icons.Default.Refresh, null); Text("Refresh / retry overlay")
+        }
+    }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    Text("Icon size: ${size.toInt()} dp")
+    Slider(size, { size = it }, valueRange = 56f..96f, steps = 4, enabled = editable,
+        modifier = Modifier.semantics { contentDescription = "Overlay icon size" })
+    Text("Opacity: ${opacity.toInt()} percent")
+    Slider(opacity, { opacity = it }, valueRange = 50f..100f, steps = 9, enabled = editable,
+        modifier = Modifier.semantics { contentDescription = "Overlay opacity" })
+    TextButton(onClick = { setAppearance(size.toInt(), opacity.toInt()) }, enabled = editable) {
+        Icon(Icons.Default.Save, null); Text("Save overlay appearance")
+    }
+    Section("Startup and service", "Best-effort start after unlock restores only an enabled overlay. It never opens the radio or starts listening. Hands-free must be enabled explicitly from NexaAI. Firmware may block boot delivery, kill services, or suspend apps during ignition/sleep. Force-stop prevents startup until you open NexaAI again.")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Auto-start overlay after boot", Modifier.weight(1f))
+        Switch(settings.autoStartAfterBoot, setAutoStart, enabled = editable,
+            modifier = Modifier.testTag("auto_start").semantics { contentDescription = "Auto-start overlay after boot" })
+    }
+    Text(runtime.startup)
+    TextButton(onClick = {
+        try { context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (_: ActivityNotFoundException) { error = "Battery settings unavailable on this firmware."
+        } catch (_: SecurityException) { error = "Android denied opening battery settings." }
+    }) { Icon(Icons.Default.BatteryStd, null); Text("Battery settings") }
 }
 
 @Composable

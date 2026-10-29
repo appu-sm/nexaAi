@@ -26,6 +26,8 @@ class ConfigurationTest {
         assertEquals(original, ConfigurationCodec.decode(ConfigurationCodec.encode(original)))
         assertFalse(original.settings.llmEnabled)
         assertFalse(original.settings.wakeWordEnabled)
+        assertFalse(original.settings.overlayEnabled)
+        assertFalse(original.settings.autoStartAfterBoot)
         assertTrue(original.settings.offlineOnly)
         assertEquals(24, original.commands.size)
     }
@@ -102,7 +104,7 @@ class ConfigurationTest {
         listOf(
             JSONObject(json).put("schemaVersion", 99).toString(),
             JSONObject(json).put("arbitraryIntent", "anything").toString(),
-            JSONObject(json).apply { getJSONObject("settings").put("overlayEnabled", true) }.toString(),
+            JSONObject(json).apply { getJSONObject("settings").put("llmEnabled", true) }.toString(),
             JSONObject(json).apply { getJSONObject("settings").put("assistantEnabled", "true") }.toString(),
             "not json", "$json trailing", "{unquoted: true}", "[]",
             "x".repeat(ConfigurationCodec.MAX_BYTES + 1),
@@ -117,6 +119,23 @@ class ConfigurationTest {
                 if (it.id == CommandId.PAUSE) it.copy(aliases = aliases) else it
             })
             assertThrows(IllegalArgumentException::class.java) { ConfigurationValidator.validate(changed) }
+        }
+    }
+
+    @Test fun overlaySettingsPreserveOldDefaultsAndRemainIndependentOfWakeWord() {
+        val configured = Configuration(settings = AssistantSettings(overlayEnabled = true, autoStartAfterBoot = true,
+            overlaySizeDp = 80, overlayOpacityPercent = 75, overlayXPercent = 0, overlayYPercent = 20))
+        assertEquals(configured, ConfigurationCodec.decode(ConfigurationCodec.encode(configured)))
+        assertFalse(configured.settings.wakeWordEnabled)
+        val old = JSONObject(ConfigurationCodec.encode(Configuration()))
+        listOf("overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent").forEach {
+            old.getJSONObject("settings").remove(it)
+        }
+        assertEquals(Configuration(), ConfigurationCodec.decode(old.toString()))
+        for (invalid in listOf(-1, 101, "50", 50.5)) {
+            val malformed = JSONObject(ConfigurationCodec.encode(configured))
+            malformed.getJSONObject("settings").put("overlayYPercent", invalid)
+            assertThrows(ConfigurationException::class.java) { ConfigurationCodec.decode(malformed.toString()) }
         }
     }
 

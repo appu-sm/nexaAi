@@ -54,4 +54,5 @@ class NexaAiApplication : Application() {
         }
     }
     val handsFreeControl by lazy { HandsFreeControl(this, repository, voiceCoordinator, voiceScope) }
+    val overlayControl by lazy { com.nexaai.assistant.overlay.OverlayControl(this, repository, voiceScope) }
 }

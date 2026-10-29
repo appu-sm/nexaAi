@@ -23,7 +23,8 @@ class MainActivity : ComponentActivity() {
                     (application as NexaAiApplication).speechOutput,
                     (application as NexaAiApplication).voiceCoordinator,
                     (application as NexaAiApplication).handsFreeControl,
-                    (application as NexaAiApplication).wakeModelInstaller) as T
+                    (application as NexaAiApplication).wakeModelInstaller,
+                    (application as NexaAiApplication).overlayControl) as T
             }
         }
     }
@@ -33,5 +34,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             NexaApp(assistantViewModel, DeviceDiagnostics.inspect(this))
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (application as NexaAiApplication).overlayControl.refreshFromActivity()
     }
 }

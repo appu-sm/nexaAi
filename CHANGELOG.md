@@ -2,6 +2,30 @@
 
 ## 0.1.0 - In development
 
+- Overlay tap-to-command: idle tap uses the existing microphone foreground service
+    for one bounded command without opening Home or requiring wake word. Tap during
+    wake waiting safely hands off to command ASR and rearms the opted-in loop;
+    command-active tap stops, hold opens Home and dragging only repositions. Recolor
+    only the small body indicator light green during reported listening. Add
+    single-session/handoff/Stop/watchdog/permission/pixel regressions. Background
+    microphone restrictions are reported, not bypassed; no automatic wake opt-in
+    or boot microphone start. No new dependencies or physical verification.
+
+- Refine the overlay into one transparent draggable robot icon, without a status
+    panel or separate Stop button. Tap opens NexaAI when idle or stops active
+    listening; hold opens the app in either state. Dragging saves position without
+    triggering either action. Keep real wake-state artwork and accessible status.
+
+- Milestone 5: optional draggable floating controls with supplied robot launcher/
+    overlay artwork, explicit overlay permission flow and revocation handling,
+    saved size/opacity/position, real shared listening status and immediate Stop.
+    Add non-recording foreground overlay service and bounded after-unlock
+    boot/package-update restoration, all off by default. Never auto-resume the
+    microphone, launch the radio at boot or restart failed services in a loop.
+    Preserve existing radio/command/speech/wake behavior and schema-1 settings;
+    no new dependencies. Add host policy/window/service-failure/permission UI
+    tests and physical acceptance procedure. Target firmware remains untested.
+
 - Add optional Vosk grammar mode and custom vocabulary in Settings. Build bounded
     per-session grammars from enabled aliases, allowlisted app names, spoken
     volume/FM values and `[unk]`; map final numeric phrases into the unchanged
