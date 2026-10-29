@@ -2,6 +2,20 @@
 
 ## 0.1.0 - In development
 
+- Fix listening green spilling onto the robot's body: use a circular chest-light
+    mask centered at (50%, 70.5%), radius 5.5%, including the pale center pixels.
+    Give overlay text and its pointer a neutral grey (#424242) background; fix a
+    drawable color-name collision that previously left the fill unset. Pixel and
+    fill-color regressions pass for all four artwork variants; 92 host tests,
+    debug build and lint pass. Physical head-unit appearance remains unverified.
+
+- Use saturated green for the listening body light. Add a temporary speech bubble
+    beside the floating robot for real partial/final transcripts and command
+    results/errors. Keep the icon's touch area/position unchanged; choose the
+    roomier side, wrap/scroll output, dismiss on text tap or 12 seconds of inactivity,
+    and release both windows/timers on teardown. No audio/command behavior change,
+    new dependency or target-device verification.
+
 - Overlay tap-to-command: idle tap uses the existing microphone foreground service
     for one bounded command without opening Home or requiring wake word. Tap during
     wake waiting safely hands off to command ASR and rearms the opted-in loop;

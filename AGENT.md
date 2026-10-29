@@ -827,12 +827,19 @@ overlay foreground service owns one `TYPE_APPLICATION_OVERLAY` window, checks
 removes the window on disable/destruction. Supplied `images/` artwork provides
 launcher/offline/wake/pressed states. Wake-active means the existing coordinator
 is actually waiting; no model/algorithm/radio mapping is changed. Only a transparent,
-draggable robot icon is shown, without a panel/status strip. Tap when idle requests
+draggable robot icon is shown, without a permanent panel/status strip. A temporary
+pointed bubble shows real partial/final transcripts and typed command result/error
+messages beside it, using the roomier side, bounded wrapping/scrolling, text-tap
+dismissal and a 12-second inactivity timeout. Its separate window does not move or
+enlarge the icon's touch area; both windows/timers are released on disable or failure.
+Tap when idle requests
 one command through the existing microphone foreground service, without a wake word
 or activity launch. Tap while waiting for wake manually triggers a serialized
 wake-to-command handoff and rearms afterward; tap during command processing stops.
-Hold opens NexaAI; dragging only moves the icon. The body light is recolored light
-green only for reported wake/command listening, leaving other pixels unchanged.
+Hold opens NexaAI; dragging moves the icon and its bubble together. The body light
+is recolored saturated green only for reported wake/command listening, leaving
+other pixels unchanged. Transcript/result text remains memory-only and may be
+visible to anyone viewing the overlaid app; command execution is unchanged.
 Stop uses `HandsFreeControl.disable` to cancel the shared
 session, including push-to-talk. No overlay callback dispatches commands.
 
@@ -852,7 +859,7 @@ restrictions, especially API 30+ background microphone checks, are not bypassed.
 Both services are non-sticky and do
 not schedule retries. Firmware may still suppress delivery or kill normal APKs;
 configured, permission, attached-window and runtime status remain distinct.
-89 host tests, debug build and lint pass after the tap-to-command refinement; see the
+92 host tests, debug build and lint pass after the speech-bubble refinement; see the
 test plan for exact evidence.
 No physical K2501, boot, sleep/ignition, real overlay grant or audio test was run.
 These are outstanding acceptance gates, not verified firmware support.

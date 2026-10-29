@@ -381,6 +381,51 @@ Stationary device acceptance remains pending:
 
 ## Milestone 5 Overlay and Startup
 
+### Latest Speech-Bubble Results (2026-10-29)
+
+Chest-circle/grey-background correction: the full command was rerun successfully
+with the same 92-test and lint counts below. The artwork test now requires changed
+pixels to stay inside the measured circle (center 50%, 70.5%; radius 5.5%), checks
+that the pale light center changes in all four variants, and preserves every
+outside pixel/alpha. The bubble test checks actual drawable fill colors (#424242)
+for both text backing and pointer, catching the prior unset-fill name collision.
+Physical visual verification remains pending; compare chest-circle edges against
+the source image and confirm readable white text on grey over other apps.
+
+Full test/build/lint command passed: **92 tests, zero failures/errors/skips; debug
+APK assembled (~191 MiB); lint 0 errors/26 warnings**. Edited runtime files have
+no editor diagnostics. This supersedes previous host counts. Nine additional
+warnings concern physical left/right gravity in bubble placement, intentionally
+computed after resolving the icon's logical RTL coordinates; none are suppressed.
+No new dependency, permission, microphone path or command engine was introduced.
+
+Tests verify saturated green only inside the blue body-indicator region; live
+partial/final transcript and result/error mapping; clearing text on new capture;
+retaining observed text during processing/TTS and completed wake cycles; two
+bounded windows only while text is visible; left/right edge placement, unchanged
+icon size/coordinates, long output and compact portrait constraints; 12-second
+expiry without resurrection on repeated updates; and teardown cancelling expiry.
+All existing radio/command/speech/service/permission/startup regressions pass.
+
+Physical acceptance additions (all **not run**, no target attached/tested):
+
+1. Compare the body light against the previous pale green; only reported wake or
+	command capture should use the saturated green. Confirm all other artwork and
+	idle/processing/speaking colors are unchanged.
+2. Speak a configured command through overlay tap and hands-free. Observe partial
+	and final `You:` text, then the actual `NexaAI:` result beside the robot; ensure
+	partials never execute. Test success, unsupported, rejected and error messages.
+3. Drag to each display edge, rotate/change font scale where supported, and compare
+	radio/navigation controls. Bubble should point to the icon, choose available
+	side space, remain on-screen, wrap/scroll long output and not resize/move the
+	icon. Verify tap/Stop, hold/open and drag actions retain their prior behavior.
+4. Tap bubble text to dismiss; wait 12 seconds without new text to check expiry.
+	Repeated service/settings/display updates must not resurrect identical text.
+	A new command/text change may show another bubble. Disable overlay, revoke
+	permission and destroy/restart the service: no orphaned icon, bubble or timer.
+5. Confirm text is visible to anyone looking at the screen, but no transcript or
+	result is logged, saved or uploaded. Disable overlay when this display is unwanted.
+
 ### Latest Tap-to-Command Results (2026-10-29)
 
 Final full command `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug

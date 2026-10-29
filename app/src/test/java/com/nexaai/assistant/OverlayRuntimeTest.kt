@@ -169,15 +169,81 @@ class OverlayRuntimeTest {
                 val after = green.getPixel(horizontal, vertical)
                 if (before != after) {
                     changed++
-                    assertTrue(vertical in original.height * 70 / 100 until original.height * 96 / 100)
-                    assertTrue(horizontal in original.width * 38 / 100 until original.width * 64 / 100)
+                    val distanceX = horizontal - original.width * 0.5
+                    val distanceY = vertical - original.height * 0.705
+                    val radius = original.width * 0.055
+                    assertTrue("Only chest-circle pixels may change at ($horizontal, $vertical)",
+                        distanceX * distanceX + distanceY * distanceY <= radius * radius + 0.001)
                     android.graphics.Color.colorToHSV(after, hsv)
-                    if (android.graphics.Color.alpha(after) >= 128) assertEquals(135f, hsv[0], 3f)
+                    if (android.graphics.Color.alpha(after) >= 128) {
+                        assertEquals(125f, hsv[0], 3f)
+                        assertTrue(hsv[1] >= 0.85f)
+                        assertTrue(hsv[2] <= 0.8f)
+                    }
                     assertEquals(android.graphics.Color.alpha(before), android.graphics.Color.alpha(after))
                 }
             }
             assertTrue("Body indicator must change for resource $resource", changed > 0)
+            assertNotEquals("The center of the chest light must turn green",
+                original.getPixel(original.width / 2, original.height * 70 / 100),
+                green.getPixel(original.width / 2, original.height * 70 / 100))
             assertSame(artwork.drawable(resource, true), artwork.drawable(resource, true))
         }
+    }
+
+    @Test fun speechBubbleShowsTranscriptAndOutputWithoutChangingIconAndExpiresOnce() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val window = AndroidOverlayWindow(context, OverlayActions({}, {}, {}), { _, _ -> }, { fail("Window failed") })
+        val settings = AssistantSettings(overlayEnabled = true, overlayXPercent = 100)
+        window.add(settings, OverlayPresentation("Listening", speech = OverlaySpeech(transcript = "volume up")))
+        val manager = org.robolectric.shadow.api.Shadow.extract<org.robolectric.shadows.ShadowWindowManagerImpl>(
+            context.getSystemService(WindowManager::class.java))
+        assertEquals(2, manager.views.size)
+        val icon = manager.views.filterIsInstance<ImageButton>().single()
+        val iconParams = icon.layoutParams as WindowManager.LayoutParams
+        val iconX = iconParams.x
+        val iconWidth = iconParams.width
+        val response = OverlayPresentation("Hands-free off", speech = OverlaySpeech("volume up", "Volume increased"))
+        window.update(settings, response)
+        assertEquals(2, manager.views.size)
+        val frame = manager.views.filterIsInstance<android.widget.FrameLayout>().single()
+        val scroll = frame.getChildAt(1) as android.widget.ScrollView
+        val grey = android.graphics.Color.rgb(66, 66, 66)
+        assertEquals(grey, (scroll.background as android.graphics.drawable.GradientDrawable).color!!.defaultColor)
+        assertEquals(grey, (frame.getChildAt(0).background as android.graphics.drawable.GradientDrawable).color!!.defaultColor)
+        assertEquals("You: volume up\nNexaAI: Volume increased", (scroll.getChildAt(0) as android.widget.TextView).text.toString())
+        val bubbleParams = frame.layoutParams as WindowManager.LayoutParams
+        assertTrue(bubbleParams.x >= 0 && bubbleParams.y >= 0)
+        assertTrue(bubbleParams.x + bubbleParams.width <= iconX)
+        assertEquals(iconX, iconParams.x)
+        assertEquals(iconWidth, iconParams.width)
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(13))
+        assertEquals(1, manager.views.size)
+        window.update(settings, response)
+        assertEquals(1, manager.views.size)
+        window.remove()
+        assertTrue(manager.views.isEmpty())
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "w360dp-h640dp-port")
+    fun bubbleUsesRightSideAtLeftEdgeAndClearsOnDisable() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val window = AndroidOverlayWindow(context, OverlayActions({}, {}, {}), { _, _ -> }, { fail("Window failed") })
+        val settings = AssistantSettings(overlayEnabled = true, overlayXPercent = 0, overlayYPercent = 100)
+        window.add(settings, OverlayPresentation("Listening", speech = OverlaySpeech("hello", "A long response ".repeat(100))))
+        val manager = org.robolectric.shadow.api.Shadow.extract<org.robolectric.shadows.ShadowWindowManagerImpl>(
+            context.getSystemService(WindowManager::class.java))
+        val icon = manager.views.filterIsInstance<ImageButton>().single()
+        val iconParams = icon.layoutParams as WindowManager.LayoutParams
+        val frame = manager.views.filterIsInstance<android.widget.FrameLayout>().single()
+        val bubbleParams = frame.layoutParams as WindowManager.LayoutParams
+        assertTrue(bubbleParams.x >= iconParams.x + iconParams.width)
+        assertTrue(bubbleParams.x + bubbleParams.width <= context.resources.displayMetrics.widthPixels)
+        assertTrue(bubbleParams.y + bubbleParams.height <= context.resources.displayMetrics.heightPixels)
+        assertTrue(bubbleParams.height >= 40 * context.resources.displayMetrics.density)
+        window.remove()
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(13))
+        assertTrue(manager.views.isEmpty())
     }
 }

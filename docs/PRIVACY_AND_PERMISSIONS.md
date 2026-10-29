@@ -59,6 +59,15 @@ appearing/restoring/importing an overlay never enables wake word. The wake artwo
 indicates actual detector waiting, not simply a saved preference. Permission/window
 or service failures preserve visible push-to-talk and typed-command access.
 
+With overlay enabled, partial/final transcripts and actual command results/errors
+also appear in a temporary speech bubble over other apps. Anyone looking at the
+display can see this text. It is memory-only, never logged, saved or uploaded.
+The bubble disappears after 12 seconds without changed text, clears for a new
+capture/initialization or overlay teardown, and can be dismissed by tapping its
+text. Disable overlay to stop displaying text over other apps. This display does
+not bypass microphone permissions or execute partial transcripts. The body light
+is saturated green only for reported wake/command listening, not pending startup.
+
 No accessibility service, root, arbitrary shell execution, privileged permission,
 firmware change, battery-policy bypass or hidden vendor API is used.
 

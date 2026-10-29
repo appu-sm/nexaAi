@@ -172,7 +172,7 @@ models. This is not a RAM/power measurement; runtime suitability remains open.
 ## Milestone 5 Host Evidence (2026-10-29)
 
 Optional overlay and best-effort, after-unlock startup are implemented for the
-unchanged min API 28 / target API 35 normal APK. Host gates pass: 89 tests, no
+unchanged min API 28 / target API 35 normal APK. Host gates pass: 92 tests, no
 failures/errors/skips; debug APK assembled (~191 MiB, not RAM evidence); lint has
 zero errors. Final warning count is recorded in the test plan. No new dependencies,
 privileges, radio mappings, speech engine or wake detector changes were introduced.

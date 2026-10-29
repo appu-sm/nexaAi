@@ -81,7 +81,7 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
             scope.launch {
                 combine(app.repository.snapshots, app.voiceCoordinator.state, app.handsFreeControl.enabled,
                     app.voiceCoordinator.handsFreeEnabled, app.handsFreeControl.commandPending) { saved, voice, requested, active, command ->
-                    saved to overlayPresentation(voice, requested || command, active)
+                    saved to overlayPresentation(voice, requested || command, active, presentation.speech)
                 }.collect { (saved, state) ->
                     snapshot = saved; presentation = state
                     if (state.notice != null && state.notice != lastNotice) {

@@ -33,13 +33,17 @@ internal class OverlayArtwork(private val context: Context) {
             val source = BitmapFactory.decodeResource(context.resources, resource)
             val bitmap = source.copy(Bitmap.Config.ARGB_8888, true)
             val hsv = FloatArray(3)
-            for (vertical in bitmap.height * 70 / 100 until bitmap.height * 96 / 100) {
-                for (horizontal in bitmap.width * 38 / 100 until bitmap.width * 64 / 100) {
+            for (vertical in bitmap.height * 65 / 100 until bitmap.height * 77 / 100) {
+                for (horizontal in bitmap.width * 44 / 100 until bitmap.width * 57 / 100) {
+                    val circleX = (horizontal.toFloat() / bitmap.width - 0.5f) / 0.055f
+                    val circleY = (vertical.toFloat() / bitmap.height - 0.705f) / 0.055f
+                    if (circleX * circleX + circleY * circleY > 1f) continue
                     val pixel = bitmap.getPixel(horizontal, vertical)
                     Color.colorToHSV(pixel, hsv)
-                    if (Color.alpha(pixel) > 0 && hsv[0] in 170f..250f && hsv[1] > 0.18f) {
-                        hsv[0] = 135f
-                        hsv[1] = hsv[1].coerceIn(0.25f, 0.65f)
+                    if (Color.alpha(pixel) > 0 && hsv[1] > 0.05f) {
+                        hsv[0] = 125f
+                        hsv[1] = 0.9f
+                        hsv[2] = hsv[2].coerceAtMost(0.78f)
                         bitmap.setPixel(horizontal, vertical, Color.HSVToColor(Color.alpha(pixel), hsv))
                     }
                 }
@@ -57,6 +61,7 @@ class AndroidOverlayWindow(
 ) : OverlayWindow {
     private val manager = context.getSystemService(WindowManager::class.java)
     private val artwork = OverlayArtwork(context)
+    private val bubble = OverlaySpeechBubble(context)
     private var root: OverlayIconButton? = null
     private var settings = AssistantSettings()
     private var presentation = OverlayPresentation("Hands-free off")
@@ -84,13 +89,23 @@ class AndroidOverlayWindow(
         this.settings = settings; this.presentation = presentation
         render(icon)
         installDrag(icon)
-        manager.addView(icon, params)
-        root = icon
+        try {
+            manager.addView(icon, params)
+            root = icon
+            bubble.render(presentation.speech, params, icon.alpha)
+        } catch (failure: RuntimeException) {
+            remove()
+            throw failure
+        }
     }
 
     override fun update(settings: AssistantSettings, presentation: OverlayPresentation) {
         this.settings = settings; this.presentation = presentation
-        root?.let { render(it); manager.updateViewLayout(it, params) }
+        root?.let {
+            render(it)
+            manager.updateViewLayout(it, params)
+            bubble.render(presentation.speech, params, settings.overlayOpacityPercent / 100f)
+        }
     }
 
     private fun bounds(): Pair<Int, Int> {
@@ -147,7 +162,12 @@ class AndroidOverlayWindow(
                         val (maxX, maxY) = bounds()
                         params.x = (startX + deltaX.roundToInt()).coerceIn(0, maxX)
                         params.y = (startY + deltaY.roundToInt()).coerceIn(0, maxY)
-                        try { root?.let { manager.updateViewLayout(it, params) } }
+                        try {
+                            root?.let {
+                                manager.updateViewLayout(it, params)
+                                bubble.render(presentation.speech, params, settings.overlayOpacityPercent / 100f)
+                            }
+                        }
                         catch (_: RuntimeException) { onFailure() }
                     } else icon.onTouchEvent(event)
                 }
@@ -170,6 +190,7 @@ class AndroidOverlayWindow(
     }
 
     override fun remove() {
+        bubble.clear()
         val view = root ?: return
         root = null
         try { manager.removeViewImmediate(view) }

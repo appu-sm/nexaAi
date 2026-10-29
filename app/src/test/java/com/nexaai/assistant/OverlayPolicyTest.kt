@@ -7,6 +7,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OverlayPolicyTest {
+    @Test fun speechBubbleShowsRealTranscriptAndResultsAndClearsForNewCapture() {
+        val heard = overlayPresentation(VoiceState.Listening("volume up"), false, false)
+        assertEquals("You: volume up", heard.speech?.text())
+        val completed = VoiceState.Completed("volume up", com.nexaai.assistant.domain.CommandResult.Success("Volume increased"))
+        val result = overlayPresentation(completed, false, false)
+        assertEquals("You: volume up\nNexaAI: Volume increased", result.speech?.text())
+        assertEquals(result.speech, overlayPresentation(VoiceState.WaitingForWakeWord(completed), true, true).speech)
+        assertEquals(result.speech, overlayPresentation(VoiceState.SpeakingResponse, true, true, result.speech).speech)
+        assertNull(overlayPresentation(VoiceState.Listening(), true, true, result.speech).speech)
+        assertNull(overlayPresentation(VoiceState.Initializing, false, false, result.speech).speech)
+        assertEquals("NexaAI: Microphone denied", overlayPresentation(VoiceState.Error("Microphone denied"), false, false).speech?.text())
+    }
+
     @Test fun startupRequiresEveryGateAndNeverChangesWakePreferences() {
         val settings = AssistantSettings(autoStartAfterBoot = true, overlayEnabled = true)
         val ready = ConfigurationSnapshot(Configuration(settings = settings), ready = true)

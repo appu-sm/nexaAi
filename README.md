@@ -115,14 +115,18 @@ Existing settings survive upgrades. Overlay and startup never enable wake word.
     no permission screen opens automatically. Returning to NexaAI rechecks access.
 2. The supplied robot artwork is used for the launcher and overlay. Drag its icon
     to an unobstructive edge while stationary; position, size (56-96 dp), and
-    opacity (50-100%) persist. Only the robot icon floats over other apps, without
-    a panel or status strip. Tap when idle to capture one command directly, without
+    opacity (50-100%) persist. The robot floats without a permanent panel or status
+    strip. A grey speech bubble appears beside it for partial/final transcripts
+    (`You:`) and actual command results/errors (`NexaAI:`). It chooses the roomier
+    side, wraps/scrolls long output, and disappears after 12 seconds without new text;
+    tap its text to dismiss. The icon's saved position and touch area stay unchanged.
+    Tap the icon when idle to capture one command directly, without
     opening Home or saying a wake word. The final recognized command uses the
     existing validated command engine and executes once. Tap during command
     capture/processing to stop; hold opens NexaAI. Dragging only moves the icon.
     Grant microphone access once using Home first and import the Vosk model. Missing
     permission/model or a blocked service produces a visible error, not an automatic
-    activity launch. The small body light turns light green during reported wake or
+    activity launch. The small body light turns saturated green during reported wake or
     command listening, and returns to blue while idle, loading, processing, speaking
     or unavailable. Full status stays in the app and accessible icon description.
     Simply displaying the overlay never captures audio or creates a second recorder.

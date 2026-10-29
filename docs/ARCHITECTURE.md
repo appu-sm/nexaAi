@@ -244,8 +244,8 @@ pending-start gate and 10-second watchdog surface failure without retrying.
 `OverlayController` is a constructor-injected, idempotent window lifecycle;
 unit tests substitute an `OverlayWindow`. Android uses `TYPE_APPLICATION_OVERLAY`,
 nonfocusable/nontouch-modal flags, visible opacity >=50%, and >=56 dp controls.
-The transparent window contains only one square robot ImageButton at the saved
-icon size; no rectangular panel, text strip or separate Stop button is drawn.
+The transparent icon window contains one square robot ImageButton at the saved
+icon size; no permanent panel, text strip or separate Stop button is drawn.
 Tap requests a command when idle or waiting for wake; during command processing
 it cancels the session. Hold opens Home. Crossing touch slop cancels native click/long-click handling before moving
 the window; release persists the clamped position without invoking actions.
@@ -259,12 +259,36 @@ errors and stopped states do not masquerade as an active detector. All four user
 PNG assets are copied/renamed as Android drawables by a Gradle resource task; the
 source artwork is not rewritten. Existing vector remains the notification small icon.
 
-`OverlayArtwork` caches four small listening variants. It recolors cyan/blue pixels
-only inside the body-indicator region (38-64% width, 70-96% height), retaining alpha,
-shading and all pixels outside that region. Only `WaitingForWakeWord` in an actual
+`OverlayArtwork` caches four small listening variants. It recolors chromatic pixels
+only inside a circular chest-light mask centered at (50% width, 70.5% height),
+radius 5.5% of the square PNG. This replaces the oversized rectangular mask that
+tinted body shading below the light. The low saturation cutoff includes its pale
+center; alpha and every pixel outside the circle stay unchanged.
+Only `WaitingForWakeWord` in an actual
 hands-free session and `VoiceState.Listening` set `microphoneActive`; initializing,
 pending starts, processing, speech and failures keep the blue indicator. Pixel
 tests cover normal/pressed offline/wake variants and transparent edges.
+
+The listening body color uses hue 125 degrees, 90% saturation and brightness capped
+at 78%, replacing the earlier pale green without tinting other image regions.
+`OverlaySpeech` carries only real partial/final transcripts and result/error messages
+from VoiceState, with You/NexaAI labels. New capture/initialization clears stale text;
+processing/speaking can retain the latest observed text and wake waiting retains
+the previous completed command's result. It never submits partials to dispatch.
+
+`OverlaySpeechBubble` owns a separate bounded TYPE_APPLICATION_OVERLAY window so
+text cannot change the icon's coordinates, size or saved drag percentages. It uses
+a scrollable 16 sp white text body and matching neutral grey (#424242) background
+and pointer, choosing physical left/right room
+after converting the icon's logical RTL coordinate. Width is capped at 320 dp and
+available space; height at 220 dp and available display height. Physical gravity
+constants are deliberate for this coordinate calculation; lint reports unsuppressed
+RTL style warnings. The bubble follows dragging/configuration updates, expires
+12 seconds after text changes and dismisses on text tap. Repeated state/layout
+updates cannot resurrect dismissed/expired identical text. Removal clears the view,
+handler callback and text references; partial attachment failure removes both
+windows. There are no animations, polling, transcript logs, network calls or
+additional command/audio sessions. Real head-unit framing/legibility needs testing.
 
 `HandsFreeControl.listenOnce` rechecks microphone access and valid assistant
 configuration, deduplicates pending starts, and requests the same nonexported
