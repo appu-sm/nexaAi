@@ -1,6 +1,7 @@
 package com.nexaai.assistant.speech
 
 import android.Manifest
+import com.nexaai.assistant.diagnostics.VoiceEvent
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -152,7 +153,16 @@ class HandsFreeService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        if (app.voiceDiagnostics.count(VoiceEvent.SERVICE_CREATED) > 0) {
+            app.voiceDiagnostics.record(VoiceEvent.SERVICE_RECREATED)
+        }
+        app.voiceDiagnostics.record(VoiceEvent.SERVICE_CREATED)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        app.voiceDiagnostics.record(VoiceEvent.SERVICE_START)
         if (intent?.action == STOP) {
             app.handsFreeControl.disable()
             stopSelf()
@@ -222,6 +232,7 @@ class HandsFreeService : Service() {
     }
 
     override fun onDestroy() {
+        app.voiceDiagnostics.record(VoiceEvent.SERVICE_DESTROYED)
         if (started) app.voiceCoordinator.cancel()
         app.handsFreeControl.serviceEnded()
         scope.cancel()

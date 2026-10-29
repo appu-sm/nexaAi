@@ -9,9 +9,78 @@ baseline inspection (`adb devices -l`: empty).
 
 ## Automated gates
 
+### Settings-Driven APK Naming (2026-10-29)
+
+`settings.gradle.kts` owns project name, app version name/code and enabled APK
+build types. App packaging uses the actual variant type and resolved version:
+`<project-name>.<build-type>.<version>.apk`. Debug packaging generated
+`app/build/outputs/apk/debug/NexaAI.debug.0.1.0.apk`; its output-metadata.json
+confirms variant debug, version 0.1.0/code 1 and the matching output filename.
+The subsequent combined debug/release build confirmed debug up-to-date; release
+was interrupted during dex generation and its retry was skipped by the user.
+Release filename is configured as NexaAI.release.0.1.0.apk but release packaging
+was not verified in this run. Release signing remains unconfigured/unsigned;
+no signing credentials, dependencies or application behavior were changed.
+
+### Command Audio Follow-Up (2026-10-29)
+
+User report: `open clock` yields only `clock`; speaking loudly/near the mic is
+needed. Mode, distance, source, grammar setting and actual device build were not
+provided, so acoustic root cause is not confirmed. Inspection found Listening
+was published before grammar preparation/AudioRecord startup. It now waits for
+the actual capture-ready callback. Add command-only source selection and bounded
+digital gain, both defaulting to previous behavior; no wake threshold or fuzzy
+command matching change.
+
+Final `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+--console=plain`: **BUILD SUCCESSFUL in 1m 7s**, 54 tasks (7 executed,
+47 up-to-date). **103 tests, zero failures/errors/skips; lint 0 errors and 26
+warnings**. Four added tests cover delayed readiness, PCM gain saturation/read
+bounds, backward-compatible strict settings and compact source/gain persistence.
+Grammar coverage now verifies allowlisted `open clock` resolves but bare `clock`
+does not. No real microphone/source/gain accuracy comparison ran. The previously
+documented shifted editor nullable-Recognizer diagnostics persist despite the
+successful Gradle compile/lint.
+
+Updated APK SHA-256:
+`4bf34c9dbf6b4e8594b5acac621e9244169557f8bb0f2c5f47e963648395d609`.
+Retest while parked: wait for Listening; compare both command sources at 100%,
+then standard MIC at 150-200% only if quiet; compare grammar off/on with Clock
+allowlisted. Use the same phrase, distance and noise, at least 20 attempts per
+combination for an initial comparison (not reliability certification), record
+full-versus-missing-prefix results and unintended commands on negative speech.
+Gain raises noise and can clip; reduce it if worse. Check physical mic routing/
+mount/connection if both sources remain quiet. Wake/ASR acoustic acceptance
+remains pending.
+
+Milestone 6 physical protocols and the acceptance decision live in the
+[wake-word acceptance report](WAKE_WORD_ACCEPTANCE.md). Host event/clock/fake-engine
+and Robolectric tests are simulated checks, not microphone/model performance
+tests. All physical rows remain pending until measured on the head unit.
+
 ```sh
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
+
+### Milestone 6 Host Results (2026-10-29)
+
+Final `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+--console=plain`: **BUILD SUCCESSFUL in 1m 26s**, 54 tasks (11 executed,
+43 up-to-date). JUnit XML totals: **99 tests / 17 suites, 0 failures, errors or
+skips**. Lint: **0 errors / 26 warnings**, unchanged warning count from Milestone
+5. Debug APK: 199,985,170 bytes (~190.72 MiB), without model weights; exact hash
+and measurement gaps are in the acceptance report. Seven new simulated tests
+plus expanded existing tests cover diagnostic bounds/reset, monotonic ordering,
+durations, counters/categories, injectable resources, lifecycle/dispatch metrics,
+manual recovery, compact controls and SAF export bounds/privacy. Focused workflow
+run also passed 39 tests before the full gate.
+
+The compact test waits for initial configuration readiness and scrolls horizontal
+navigation tabs before clicking; earlier test failures were fixed rather than
+skipped. Editor nullable-Recognizer diagnostics remain inconsistent with the
+successful Gradle compile/lint and appear at shifted source locations. No physical
+audio/model, offline, K2501 resource, power, screen-off, reboot or ignition
+measurement ran. Hardware acceptance remains pending, not passed by these tests.
 
 Milestone 0: build baseline and package-identity test before adding configuration.
 Milestone 1: safe defaults, schema migration/recovery, strict import validation,

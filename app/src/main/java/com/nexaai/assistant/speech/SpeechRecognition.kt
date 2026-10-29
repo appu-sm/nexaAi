@@ -1,6 +1,9 @@
 package com.nexaai.assistant.speech
 
 import android.net.Uri
+import com.nexaai.assistant.diagnostics.VoiceDiagnostics
+import com.nexaai.assistant.diagnostics.VoiceEvent
+import com.nexaai.assistant.diagnostics.DiagnosticCode
 import com.nexaai.assistant.data.normalizeAlias
 import com.nexaai.assistant.domain.CommandResult
 import com.nexaai.assistant.execution.CommandDispatcher
@@ -51,6 +54,10 @@ sealed interface SpeechOutputState {
 interface SpeechRecognizerEngine {
     suspend fun initialize()
     suspend fun recognize(onPartialResult: (String) -> Unit): String
+    suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit): String {
+        onReady()
+        return recognize(onPartialResult)
+    }
     fun stop()
     fun release()
 }
@@ -82,6 +89,7 @@ class SpeechSessionCoordinator(
     private val output: SpeechOutput,
     private val scope: CoroutineScope,
     private val detector: WakeWordDetector? = null,
+    private val diagnostics: VoiceDiagnostics = VoiceDiagnostics(),
     private val speechEnabled: suspend () -> Boolean,
 ) {
     private val mutableState = MutableStateFlow<VoiceState>(VoiceState.Idle())
@@ -91,6 +99,7 @@ class SpeechSessionCoordinator(
     private val finishing = AtomicBoolean(false)
     private var session: Job? = null
     private var serviceOwned = false
+    private var diagnosticStage = DiagnosticCode.ASR
     private var manualCommand: CompletableDeferred<Unit>? = null
     private val installed = MutableStateFlow(installer.isInstalled())
     val modelInstalled: StateFlow<Boolean> = installed.asStateFlow()
@@ -102,13 +111,19 @@ class SpeechSessionCoordinator(
             mutableState.value = VoiceState.Error("Wake-word engine unavailable. Push-to-talk remains available.")
             return false
         }
-        if (!active.compareAndSet(false, true)) return false
+        if (!active.compareAndSet(false, true)) {
+            diagnostics.record(VoiceEvent.DUPLICATE_REQUEST)
+            return false
+        }
         handsFree.value = true
+        diagnosticStage = DiagnosticCode.WAKE
+        diagnostics.record(VoiceEvent.SESSION_START, DiagnosticCode.WAKE)
         session = scope.launch {
             try {
                 mutableState.value = VoiceState.Initializing
                 output.stopAndAwait()
                 wake.initialize(phrase)
+                diagnosticStage = DiagnosticCode.ASR
                 engine.initialize()
                 while (true) {
                     currentCoroutineContext().ensureActive()
@@ -116,13 +131,14 @@ class SpeechSessionCoordinator(
                     val trigger = CompletableDeferred<Unit>()
                     manualCommand = trigger
                     mutableState.value = VoiceState.WaitingForWakeWord(previous)
+                    diagnosticStage = DiagnosticCode.WAKE
                     try {
                         coroutineScope {
                             val detection = async { wake.awaitDetection() }
                             try {
                                 select<Unit> {
                                     detection.onAwait { }
-                                    trigger.onAwait { }
+                                    trigger.onAwait { diagnostics.record(VoiceEvent.MANUAL_TRIGGER) }
                                 }
                             } finally {
                                 if (detection.isActive) { detection.cancel(); wake.stop() }
@@ -132,15 +148,19 @@ class SpeechSessionCoordinator(
                     } finally { manualCommand = null }
                     currentCoroutineContext().ensureActive()
                     mutableState.value = VoiceState.WakeWordDetected
+                    diagnosticStage = DiagnosticCode.ASR
                     recognizeCommand()
                     delay(350)
                 }
             } catch (timeout: TimeoutCancellationException) {
+                diagnostics.record(VoiceEvent.TIMEOUT, DiagnosticCode.TTS)
                 mutableState.value = VoiceState.Error("Speech playback timed out. Hands-free stopped; use push-to-talk or enable it again.")
             } catch (cancelled: CancellationException) {
+                diagnostics.record(VoiceEvent.CANCELLED, diagnosticStage)
                 mutableState.value = VoiceState.Idle("Hands-free listening stopped.")
                 throw cancelled
             } catch (failure: Exception) {
+                diagnostics.record(VoiceEvent.ERROR, diagnosticStage)
                 mutableState.value = VoiceState.Error(failure.message ?: "Hands-free listening failed. Use push-to-talk.")
             } finally {
                 try {
@@ -151,6 +171,7 @@ class SpeechSessionCoordinator(
                     handsFree.value = false
                     active.set(false)
                     finishing.set(false)
+                    diagnostics.record(VoiceEvent.SESSION_END, DiagnosticCode.WAKE)
                 }
             }
         }
@@ -168,7 +189,12 @@ class SpeechSessionCoordinator(
     suspend fun awaitSessionEnd() { session?.join() }
 
     fun start(fromService: Boolean = false): Boolean {
-        if (!active.compareAndSet(false, true)) return false
+        if (!active.compareAndSet(false, true)) {
+            diagnostics.record(VoiceEvent.DUPLICATE_REQUEST)
+            return false
+        }
+        diagnostics.record(VoiceEvent.SESSION_START, DiagnosticCode.ASR)
+        diagnosticStage = DiagnosticCode.ASR
         serviceOwned = fromService
         finishing.set(false)
         session = scope.launch {
@@ -178,14 +204,18 @@ class SpeechSessionCoordinator(
                 engine.initialize()
                 recognizeCommand()
             } catch (cancelled: CancellationException) {
+                diagnostics.record(if (cancelled is TimeoutCancellationException) VoiceEvent.TIMEOUT else VoiceEvent.CANCELLED,
+                    diagnosticStage)
                 mutableState.value = VoiceState.Idle("Listening cancelled.")
                 throw cancelled
             } catch (failure: Exception) {
+                diagnostics.record(VoiceEvent.ERROR, diagnosticStage)
                 mutableState.value = VoiceState.Error(failure.message ?: "Offline speech recognition failed.")
             } finally {
                 serviceOwned = false
                 active.set(false)
                 finishing.set(false)
+                diagnostics.record(VoiceEvent.SESSION_END, DiagnosticCode.ASR)
             }
         }
         return true
@@ -194,27 +224,36 @@ class SpeechSessionCoordinator(
     private suspend fun recognizeCommand() {
         finishing.set(false)
         currentCoroutineContext().ensureActive()
-        mutableState.value = VoiceState.Listening()
+        mutableState.value = VoiceState.Initializing
+        diagnostics.record(VoiceEvent.ASR_ACTIVATION)
         val finalText = try {
             withTimeoutOrNull(16_000) {
-                engine.recognize { partial ->
+                engine.recognize(onReady = {
+                    if (active.get() && !finishing.get()) mutableState.value = VoiceState.Listening()
+                }) { partial ->
                     if (active.get() && !finishing.get()) mutableState.value = VoiceState.Listening(partial.take(300))
                 }
-            }.orEmpty()
+            } ?: run {
+                diagnostics.record(VoiceEvent.TIMEOUT, DiagnosticCode.ASR)
+                ""
+            }
         } finally { engine.stop() }
         currentCoroutineContext().ensureActive()
         mutableState.value = VoiceState.Processing
         val transcript = normalizeTranscript(finalText)
         if (transcript.isBlank()) {
+            diagnostics.record(VoiceEvent.EMPTY_TRANSCRIPT, DiagnosticCode.ASR)
             mutableState.value = VoiceState.Error("No speech was recognized. Try again in a quiet moment.")
             return
         }
         mutableState.value = VoiceState.Recognized(transcript)
+        diagnostics.record(VoiceEvent.FINAL_TRANSCRIPT)
         when (val prepared = dispatcher.prepare(transcript)) {
             is Preparation.Rejected -> complete(transcript, prepared.result)
             is Preparation.Ready -> {
                 currentCoroutineContext().ensureActive()
                 mutableState.value = VoiceState.Executing(transcript)
+                diagnostics.record(VoiceEvent.COMMAND_DISPATCH)
                 complete(transcript, dispatcher.execute(prepared.pending))
             }
         }
@@ -280,7 +319,10 @@ class SpeechSessionCoordinator(
         }
     }
 
-    fun reportError(message: String) { mutableState.value = VoiceState.Error(message) }
+    fun reportError(message: String) {
+        diagnostics.record(VoiceEvent.ERROR, DiagnosticCode.SERVICE)
+        mutableState.value = VoiceState.Error(message)
+    }
 
     fun cancelForLifecycle() {
         if (handsFree.value || serviceOwned) return
@@ -289,6 +331,7 @@ class SpeechSessionCoordinator(
     }
 
     fun microphonePermissionDenied(permanentlyDenied: Boolean) {
+        diagnostics.record(VoiceEvent.ERROR, DiagnosticCode.PERMISSION)
         mutableState.value = VoiceState.Error(if (permanentlyDenied) {
             "Microphone permission denied. Enable it in Android app settings to use push-to-talk."
         } else {
@@ -308,10 +351,17 @@ class SpeechSessionCoordinator(
     }
 
     private suspend fun complete(transcript: String, result: CommandResult) {
+        diagnostics.record(VoiceEvent.COMMAND_RESULT, when (result) {
+            is CommandResult.Success -> DiagnosticCode.SUCCESS
+            is CommandResult.Failed -> DiagnosticCode.FAILED
+            CommandResult.Cancelled -> DiagnosticCode.CANCELLED
+            else -> DiagnosticCode.REJECTED
+        })
         mutableState.value = VoiceState.Completed(transcript, result)
         if (speechEnabled() && output.state.value == SpeechOutputState.Ready) {
             if (handsFree.value || serviceOwned) {
                 mutableState.value = VoiceState.SpeakingResponse
+                diagnosticStage = DiagnosticCode.TTS
                 withTimeout(20_000) { output.speakAndAwait(spokenSummary(result)) }
                 mutableState.value = VoiceState.Completed(transcript, result)
             } else output.speak(spokenSummary(result))

@@ -19,4 +19,14 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "NexaAI"
+val appVersionName = "0.1.0"
+val appVersionCode = 1
+val apkBuildTypes = listOf("debug", "release")
+
+gradle.beforeProject {
+    version = appVersionName
+    extensions.extraProperties["appVersionCode"] = appVersionCode
+    extensions.extraProperties["apkBuildTypes"] = apkBuildTypes
+}
+
 include(":app")

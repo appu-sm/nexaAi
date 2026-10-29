@@ -19,6 +19,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 
 class NexaAiApplication : Application() {
+    val voiceDiagnostics = com.nexaai.assistant.diagnostics.VoiceDiagnostics(
+        com.nexaai.assistant.diagnostics.MonotonicClock { android.os.SystemClock.elapsedRealtime() },
+    )
     private val store by lazy {
         PreferenceDataStoreFactory.create(
             corruptionHandler = ReplaceFileCorruptionHandler {
@@ -36,7 +39,11 @@ class NexaAiApplication : Application() {
             VerifiedRadioController(AndroidRadioDevice(this)))
     }
     val speechEngine by lazy {
-        VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15")) {
+        VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15"), voiceDiagnostics, input = {
+            val snapshot = repository.snapshots.first { it.ready }
+            check(snapshot.warning == null) { "Repair configuration before starting recognition." }
+            snapshot.configuration.settings.let { CommandAudioInput(it.commandAudioSource, it.commandInputGainPercent) }
+        }) {
             val snapshot = repository.snapshots.first { it.ready }
             check(snapshot.warning == null) { "Repair configuration before starting recognition." }
             if (!snapshot.configuration.settings.grammarEnabled) null
@@ -44,12 +51,12 @@ class NexaAiApplication : Application() {
         }
     }
     val speechModelInstaller by lazy { VoskModelInstaller(filesDir, contentResolver) }
-    val speechOutput by lazy { AndroidSpeechOutput(this) }
+    val speechOutput by lazy { AndroidSpeechOutput(this, voiceDiagnostics) }
     private val voiceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val wakeModelInstaller by lazy { WakeModel.installer(filesDir, contentResolver) }
     val voiceCoordinator by lazy {
         SpeechSessionCoordinator(speechEngine, speechModelInstaller, commandRuntime.dispatcher, speechOutput,
-            voiceScope, SherpaWakeWordDetector(filesDir.resolve(WakeModel.DIRECTORY))) {
+            voiceScope, SherpaWakeWordDetector(filesDir.resolve(WakeModel.DIRECTORY), diagnostics = voiceDiagnostics), voiceDiagnostics) {
             repository.snapshots.first().configuration.settings.ttsEnabled
         }
     }

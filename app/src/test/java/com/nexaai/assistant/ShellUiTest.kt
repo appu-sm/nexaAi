@@ -15,9 +15,53 @@ import org.robolectric.annotation.GraphicsMode
 class ShellUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test
+    @Config(sdk = [28], qualifiers = "w360dp-h640dp-port")
+    fun commandMicrophoneSourceAndGainAreSavedInCompactSettings() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("microphone").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        navigate("SETTINGS")
+        compose.onNodeWithTag("command_audio_source").performScrollTo().performClick()
+        compose.onNodeWithText("Standard microphone").performClick()
+        compose.onNodeWithTag("command_input_gain").performScrollTo()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { action -> action(200f) }
+        compose.onNodeWithTag("save_command_audio").performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Command microphone saved").fetchSemanticsNodes().isNotEmpty() }
+        navigate("HOME")
+        navigate("SETTINGS")
+        compose.onNodeWithTag("command_audio_source").performScrollTo().assertTextContains("Standard microphone", substring = true)
+        compose.onNodeWithText("Input gain: 200%").assertExists()
+        compose.onNodeWithTag("hands_free_enabled").assertIsOff()
+    }
+
     private fun navigate(destination: String) {
-        compose.onNodeWithTag("nav_$destination").performClick()
+        compose.onNodeWithTag("nav_$destination").performScrollTo().performClick()
         compose.waitForIdle()
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "w360dp-h640dp-port")
+    fun compactDiagnosticsCanEnableInspectAndResetWithoutStartingListening() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("microphone").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        navigate("DIAGNOSTICS")
+        compose.onNodeWithTag("voice_diagnostics").performScrollTo().assertIsOff().performClick()
+        compose.onNodeWithTag("voice_diagnostics").assertIsOn()
+        compose.onNodeWithTag("diagnostics_snapshot").performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("diagnostics_report").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("diagnostics_report").assertTextContains("application-observed", substring = true)
+        compose.onNodeWithTag("diagnostics_reset").performScrollTo().performClick()
+        compose.onNodeWithTag("diagnostics_report").assertDoesNotExist()
+        compose.onNodeWithTag("hands_free_enabled").assertIsOff()
+        compose.onNodeWithTag("voice_diagnostics").performScrollTo().performClick()
+        navigate("HOME")
+        compose.onNodeWithTag("microphone").assertIsEnabled()
     }
 
     @Test fun sixScreensAndUnavailableMicrophone() {

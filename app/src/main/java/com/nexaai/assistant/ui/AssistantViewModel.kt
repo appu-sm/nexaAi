@@ -10,6 +10,10 @@ import com.nexaai.assistant.speech.*
 import com.nexaai.assistant.overlay.OverlayControl
 import com.nexaai.assistant.overlay.OverlayRuntime
 import java.io.IOException
+import com.nexaai.assistant.diagnostics.VoiceDiagnostics
+import com.nexaai.assistant.diagnostics.ResourceMetrics
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -52,7 +56,31 @@ class AssistantViewModel(
     private val handsFreeControl: HandsFreeControl? = null,
     private val wakeInstaller: SpeechModelInstaller? = null,
     private val overlayControl: OverlayControl? = null,
+    private val diagnostics: VoiceDiagnostics = VoiceDiagnostics(),
+    private val resources: ResourceMetrics? = null,
 ) : ViewModel() {
+    val diagnosticReport = MutableStateFlow("")
+    val diagnosticsEnabled = MutableStateFlow(diagnostics.enabled)
+
+    fun setDiagnosticsEnabled(enabled: Boolean) {
+        diagnostics.setEnabled(enabled)
+        diagnosticsEnabled.value = enabled
+    }
+
+    fun resetDiagnostics() {
+        diagnostics.reset()
+        diagnosticReport.value = ""
+    }
+
+    fun inspectDiagnostics() = perform("Diagnostic snapshot captured") {
+        diagnosticReport.value = withContext(Dispatchers.IO) { diagnostics.export(resources?.read()) }
+    }
+
+    fun exportDiagnostics(uri: Uri) = perform("Diagnostic snapshot exported") {
+        require(diagnosticReport.value.isNotEmpty()) { "Capture a diagnostic snapshot first" }
+        documents.writeDiagnosticReport(uri, diagnosticReport.value)
+    }
+
     private val busy = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
     private val preview = MutableStateFlow<Configuration?>(null)
@@ -200,6 +228,10 @@ class AssistantViewModel(
 
     fun setGrammarEnabled(enabled: Boolean) = perform("Grammar mode saved") {
         repository.update { it.copy(settings = it.settings.copy(grammarEnabled = enabled)) }
+    }
+
+    fun setCommandAudioInput(source: String, gainPercent: Int) = perform("Command microphone saved") {
+        repository.update { it.copy(settings = it.settings.copy(commandAudioSource = source, commandInputGainPercent = gainPercent)) }
     }
 
     fun setGrammarWords(words: List<String>) = perform("Custom grammar words saved") {

@@ -31,4 +31,11 @@ class ConfigurationDocuments(private val resolver: ContentResolver) {
         resolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
             ?: throw IOException("Document could not be written")
     }
+
+    suspend fun writeDiagnosticReport(uri: Uri, report: String) = withContext(Dispatchers.IO) {
+        val bytes = report.toByteArray(Charsets.UTF_8)
+        require(bytes.size <= 512 * 1024) { "Diagnostic report is too large" }
+        resolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+            ?: throw IOException("Diagnostic report could not be written")
+    }
 }

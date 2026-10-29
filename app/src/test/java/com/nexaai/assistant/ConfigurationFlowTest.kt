@@ -113,6 +113,15 @@ class ConfigurationFlowTest {
             withTimeout(10_000) { viewModel.state.first { it.message == "Configuration exceeds 64 KiB" && !it.busy } }
             assertNull(viewModel.state.value.importPreview)
             assertEquals(Configuration(), repository.snapshots.first().configuration)
+            val metrics = com.nexaai.assistant.diagnostics.VoiceDiagnostics().apply { setEnabled(true) }
+            metrics.record(com.nexaai.assistant.diagnostics.VoiceEvent.ERROR, com.nexaai.assistant.diagnostics.DiagnosticCode.ASR)
+            val report = metrics.export()
+            documents.writeDiagnosticReport(Uri.fromFile(document), report)
+            assertEquals(report, document.readText())
+            val json = kotlinx.serialization.json.Json.parseToJsonElement(document.readText()).toString()
+            assertTrue(json.contains("ERROR:ASR"))
+            assertFalse(json.contains("Imported"))
+            assertTrue(runCatching { documents.writeDiagnosticReport(Uri.fromFile(document), "x".repeat(512 * 1024 + 1)) }.isFailure)
         } finally {
             collector.cancelAndJoin()
             viewModels.clear()

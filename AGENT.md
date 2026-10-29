@@ -764,6 +764,16 @@ and outstanding target checks are maintained in the test/device reports.
 
 ### Milestone 3 --- Offline speech and TTS
 
+Command-ASR follow-up (2026-10-29): show Listening only after AudioRecord starts,
+not during grammar/recognizer preparation. Optional schema-1 commandAudioSource
+(VOICE_RECOGNITION default / MIC) and commandInputGainPercent (100 default,
+100-300) are validated, saved and applied next capture. Software gain saturates
+PCM16 and also raises noise; it is not hardware mic sensitivity or proven
+far-field support. Wake audio/thresholds and exact command matching stay unchanged.
+The user reports missing `open` in `open clock` and needing loud/near speech;
+readiness delay is a plausible contributor, not a confirmed physical diagnosis.
+Compare source/gain/grammar offline on the head unit before claiming improvement.
+
 Vosk command capture supports optional runtime grammar mode, off by default, and
 up to 100 custom English vocabulary entries in Settings. The per-session grammar
 uses enabled command aliases, allowlisted names and bounded spoken volume/FM
@@ -874,6 +884,19 @@ These are outstanding acceptance gates, not verified firmware support.
 capability status.
 
 ### Milestone 6 --- Wake word
+
+**Validation implementation (2026-10-29):** Reuse the Milestone 4 sherpa-onnx
+1.12.14 detector and existing Vosk/coordinator/service/command/TTS architecture.
+No engine replacement or threshold tuning. Optional, session-only diagnostics
+record monotonic typed events/counters in a 512-event ring, expose reset/frozen
+snapshot/SAF JSON export, and read injectable resource metrics only on request.
+No raw audio, transcripts, automatic disk logs, extra permission or dependency.
+`docs/WAKE_WORD_ACCEPTANCE.md` owns the audit, reproducible live-mic quality/
+latency/resource/soak procedures, editable proposed thresholds and acceptance
+matrix. Host simulations are separate from physical evidence. Every actual
+NWD_K2501 performance, power, acoustic and firmware gate remains pending; do not
+mark hands-free accepted from builds/tests. Preserve opt-in/default-off wake mode,
+manual Stop, push-to-talk and frozen radio controls when results are inconclusive.
 
 -   Select and integrate a real local keyword-spotting engine compatible
     with the device.

@@ -21,6 +21,8 @@ data class AssistantSettings(
     val overlayOpacityPercent: Int = 90,
     val overlayXPercent: Int = 100,
     val overlayYPercent: Int = 50,
+    val commandAudioSource: String = "VOICE_RECOGNITION",
+    val commandInputGainPercent: Int = 100,
 )
 
 enum class CommandId { SET_VOLUME, VOLUME_UP, VOLUME_DOWN, MUTE, UNMUTE, LAUNCH_APP,
@@ -103,6 +105,9 @@ object ConfigurationValidator {
             require(displayName.trim() == displayName && displayName.length in 1..40 && displayName.none { it.isISOControl() }) { "Name must be 1-40 printable characters with no outer spaces" }
             validateWakePhrase(wakePhrase)
             validateGrammarWords(grammarCustomWords)
+            require(commandAudioSource in setOf("VOICE_RECOGNITION", "MIC") && commandInputGainPercent in 100..300) {
+                "Invalid command microphone source or gain (100-300 percent)"
+            }
             require(overlaySizeDp in 56..96 && overlayOpacityPercent in 50..100 &&
                 overlayXPercent in 0..100 && overlayYPercent in 0..100) { "Invalid overlay size, opacity or position" }
             require(offlineOnly && listeningMode in setOf("PUSH_TO_TALK", "WAKE_WORD") &&

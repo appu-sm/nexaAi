@@ -1,5 +1,32 @@
 # Device Compatibility
 
+## Quiet Command Audio Follow-Up (2026-10-29)
+
+User reports a missing first word (`open clock` -> `clock`) and needing loud/near
+speech; exact device/mode/source/grammar/noise conditions are unspecified. Fixed
+an application readiness mismatch: Listening now waits until command AudioRecord
+is recording. Added optional command source (VOICE_RECOGNITION or MIC) and
+100-300% saturating software gain, retaining old defaults. These are not verified
+hardware sensitivity, external-mic selection or far-field performance. Actual OEM
+route and source processing remain device dependent; wake capture is unchanged.
+All 103 host tests, debug assemble and lint pass (0 errors/26 warnings); no
+physical retest or target accuracy improvement is claimed. Reproduction and
+comparison steps are in README and TEST_PLAN.
+
+## Milestone 6 Acceptance Status (2026-10-29)
+
+All physical K2501 wake-word gates are **pending / Not yet measured**: detection
+quality, acoustic latency, RAM/CPU/power, soak, manual Stop/recovery, offline speech
+and firmware screen/ignition behavior. No device attachment check or physical run
+was performed in this milestone; prior baseline had no attached device. Normal
+APK privileges remain unchanged. The existing engine/threshold/radio mappings
+are preserved. Host diagnostics use simulated engines; they do not establish
+hardware support. The [acceptance report](WAKE_WORD_ACCEPTANCE.md) provides the
+audit, configurable provisional budgets, exact non-root profiling instructions,
+sample-count ledgers and pending decisions. Supported in-app resource snapshots
+must be taken on the head unit, not interpreted as host measurements. Battery
+and thermal fields may be absent on this vehicle-powered firmware/API 28.
+
 ## Evidence baseline
 
 Repository inspection: instructions only, no existing Android project or tests.

@@ -1,6 +1,9 @@
 package com.nexaai.assistant.speech
 
 import android.content.Context
+import com.nexaai.assistant.diagnostics.VoiceDiagnostics
+import com.nexaai.assistant.diagnostics.VoiceEvent
+import com.nexaai.assistant.diagnostics.DiagnosticCode
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -18,7 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class AndroidSpeechOutput(context: Context) : SpeechOutput, TextToSpeech.OnInitListener {
+class AndroidSpeechOutput(context: Context, private val diagnostics: VoiceDiagnostics = VoiceDiagnostics()) : SpeechOutput, TextToSpeech.OnInitListener {
     private val main = Handler(Looper.getMainLooper())
     private val mutableState = MutableStateFlow<SpeechOutputState>(SpeechOutputState.Initializing)
     override val state: StateFlow<SpeechOutputState> = mutableState.asStateFlow()
@@ -42,15 +45,18 @@ class AndroidSpeechOutput(context: Context) : SpeechOutput, TextToSpeech.OnInitL
             return
         }
         current.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String) {}
+            override fun onStart(utteranceId: String) { diagnostics.record(VoiceEvent.TTS_START) }
             override fun onDone(utteranceId: String) {
+                diagnostics.record(VoiceEvent.TTS_COMPLETE)
                 if (utteranceId == pendingId) pending?.complete(Unit)
             }
             @Deprecated("Android callback")
             override fun onError(utteranceId: String) {
+                diagnostics.record(VoiceEvent.ERROR, DiagnosticCode.TTS)
                 if (utteranceId == pendingId) pending?.completeExceptionally(IOException("Offline speech playback failed."))
             }
             override fun onStop(utteranceId: String, interrupted: Boolean) {
+                diagnostics.record(VoiceEvent.TTS_STOP)
                 if (utteranceId == pendingId) pending?.completeExceptionally(IOException("Speech playback was interrupted."))
             }
         })

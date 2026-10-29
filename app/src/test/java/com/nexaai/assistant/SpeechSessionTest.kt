@@ -1,6 +1,7 @@
 package com.nexaai.assistant
 
 import android.net.Uri
+import com.nexaai.assistant.diagnostics.*
 import com.nexaai.assistant.data.*
 import com.nexaai.assistant.domain.*
 import com.nexaai.assistant.execution.*
@@ -21,6 +22,87 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SpeechSessionTest {
+    @Test fun commandInputGainPreservesUnityBoundsReadCountAndClampsWithoutOverflow() {
+        val samples = shortArrayOf(1000, -1000, 20000, -20000, 123)
+        applyCommandInputGain(samples, 4, 100)
+        assertArrayEquals(shortArrayOf(1000, -1000, 20000, -20000, 123), samples)
+        applyCommandInputGain(samples, 4, 200)
+        assertArrayEquals(shortArrayOf(2000, -2000, Short.MAX_VALUE, Short.MIN_VALUE, 123), samples)
+        assertThrows(IllegalArgumentException::class.java) { applyCommandInputGain(samples, 6, 200) }
+        assertThrows(IllegalArgumentException::class.java) { CommandAudioInput("VOICE_CALL", 200) }
+        assertThrows(IllegalArgumentException::class.java) { CommandAudioInput("MIC", 400) }
+    }
+
+    @Test fun listeningIsNotAdvertisedUntilTheMicrophoneIsReady() = runTest {
+        val ready = CompletableDeferred<Unit>()
+        val final = CompletableDeferred<String>()
+        val controller = Controller()
+        val engine = object : SpeechRecognizerEngine {
+            override suspend fun initialize() {}
+            override suspend fun recognize(onPartialResult: (String) -> Unit): String = error("Readiness callback required")
+            override suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit): String {
+                ready.await()
+                onReady()
+                return final.await()
+            }
+            override fun stop() {}
+            override fun release() {}
+        }
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this) { false }
+        voice.start()
+        runCurrent()
+        assertEquals(VoiceState.Initializing, voice.state.value)
+        assertTrue(controller.commands.isEmpty())
+        ready.complete(Unit)
+        runCurrent()
+        assertTrue(voice.state.value is VoiceState.Listening)
+        final.complete("volume up")
+        voice.awaitSessionEnd()
+        assertEquals(1, controller.commands.size)
+    }
+
+    @Test fun simulatedDiagnosticsTrackFinalOnlyDispatchDuplicatesAndCancellation() = runTest {
+        val metrics = VoiceDiagnostics(MonotonicClock { testScheduler.currentTime }).apply { setEnabled(true) }
+        val engine = FakeEngine()
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this,
+            diagnostics = metrics) { false }
+        voice.start()
+        runCurrent()
+        assertFalse(voice.start())
+        engine.partial?.invoke("volume up")
+        assertEquals(0L, metrics.count(VoiceEvent.FINAL_TRANSCRIPT))
+        assertEquals(0L, metrics.count(VoiceEvent.COMMAND_DISPATCH))
+        engine.final.complete("volume up")
+        voice.awaitSessionEnd()
+        assertEquals(1L, metrics.count(VoiceEvent.DUPLICATE_REQUEST))
+        assertEquals(1L, metrics.count(VoiceEvent.FINAL_TRANSCRIPT))
+        assertEquals(1L, metrics.count(VoiceEvent.COMMAND_DISPATCH))
+        assertEquals(1L, metrics.count(VoiceEvent.COMMAND_RESULT, DiagnosticCode.SUCCESS))
+        val pending = SpeechSessionCoordinator(FakeEngine(), FakeInstaller(), dispatcher(controller), FakeOutput(), this,
+            diagnostics = metrics) { false }
+        pending.start()
+        runCurrent()
+        pending.stopAndJoin()
+        assertEquals(1L, metrics.count(VoiceEvent.CANCELLED, DiagnosticCode.ASR))
+        assertEquals(2L, metrics.count(VoiceEvent.SESSION_END, DiagnosticCode.ASR))
+    }
+
+    @Test fun simulatedDetectorFailureIsCategorizedOnceAndPushToTalkCanRecover() = runTest {
+        val metrics = VoiceDiagnostics().apply { setEnabled(true) }
+        val wake = FakeWake().apply { failure = java.io.IOException("missing") }
+        val controller = Controller()
+        val voice = SpeechSessionCoordinator(FakeEngine("volume up"), FakeInstaller(), dispatcher(controller), FakeOutput(),
+            this, wake, metrics) { false }
+        voice.enableHandsFree("Hey Nexa")
+        voice.awaitSessionEnd()
+        assertEquals(1L, metrics.count(VoiceEvent.ERROR, DiagnosticCode.WAKE))
+        assertEquals(0L, metrics.count(VoiceEvent.ERROR, DiagnosticCode.ASR))
+        assertTrue(voice.start())
+        voice.awaitSessionEnd()
+        assertEquals(1, controller.commands.size)
+    }
+
     @Test fun stoppingServiceOwnedCommandBlocksLateRecognitionDispatch() = runTest {
         val engine = FakeEngine()
         val controller = Controller()

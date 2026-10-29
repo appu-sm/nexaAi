@@ -21,6 +21,23 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class ConfigurationTest {
+    @Test fun commandMicrophoneOptionsRoundTripDefaultAndRejectUnsafeValues() {
+        val configured = Configuration(settings = AssistantSettings(commandAudioSource = "MIC", commandInputGainPercent = 200))
+        assertEquals(configured, ConfigurationCodec.decode(ConfigurationCodec.encode(configured)))
+        val old = JSONObject(ConfigurationCodec.encode(Configuration()))
+        old.getJSONObject("settings").remove("commandAudioSource")
+        old.getJSONObject("settings").remove("commandInputGainPercent")
+        assertEquals(Configuration(), ConfigurationCodec.decode(old.toString()))
+        for (invalid in listOf(99, 301, "200", 200.5)) {
+            val malformed = JSONObject(ConfigurationCodec.encode(configured))
+            malformed.getJSONObject("settings").put("commandInputGainPercent", invalid)
+            assertThrows(ConfigurationException::class.java) { ConfigurationCodec.decode(malformed.toString()) }
+        }
+        val malformed = JSONObject(ConfigurationCodec.encode(configured))
+        malformed.getJSONObject("settings").put("commandAudioSource", "VOICE_CALL")
+        assertThrows(ConfigurationException::class.java) { ConfigurationCodec.decode(malformed.toString()) }
+    }
+
     @Test fun defaultsAreSafeAndRoundTrip() {
         val original = Configuration()
         assertEquals(original, ConfigurationCodec.decode(ConfigurationCodec.encode(original)))

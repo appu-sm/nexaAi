@@ -14,8 +14,19 @@ add runtime networking to the application.
 
 ```sh
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/NexaAI.debug.0.1.0.apk
 ```
+
+APK naming is `<project-name>.<build-type>.<version>.apk`. The single source of
+truth is `settings.gradle.kts`: `rootProject.name`, `appVersionName`,
+`appVersionCode` and `apkBuildTypes` (enabled variants, initially debug/release).
+The app's Android version metadata uses those same version values. Change them
+there before building; the filename always uses the actual variant's build type.
+For the current settings, `:app:assembleDebug` produces
+`app/build/outputs/apk/debug/NexaAI.debug.0.1.0.apk`, and `:app:assembleRelease`
+produces `app/build/outputs/apk/release/NexaAI.release.0.1.0.apk`.
+Release signing is not configured: the release filename does not imply a signed,
+installable production APK. Debug keeps Android's normal development signing.
 
 The application ID and namespace start as `com.nexaai.assistant`. To change
 identity, update both in the app Gradle configuration, Kotlin package declarations,
@@ -170,6 +181,43 @@ guidance, not a guarantee. Never change firmware privileges to satisfy this feat
 See the [physical acceptance procedure and actual result record](docs/TEST_PLAN.md#milestone-5-overlay-and-startup).
 
 ## Verification and troubleshooting
+
+### Quiet Speech or Missing First Words
+
+Command listening is now shown only after AudioRecord has actually started,
+not while grammar/recognizer preparation is still running. Wait for Listening
+(green overlay indicator for command capture) before saying the command. In
+hands-free mode, pause after the wake phrase until command capture begins; audio
+spoken during the wake-to-ASR handoff is not replayed.
+
+For `open clock`, add the installed Clock app in Commands > Allowed apps with
+friendly name `clock`. In Settings > Listening, try **Vosk grammar mode** to
+constrain recognition to configured commands, including `open clock`. Adding
+only `clock` as custom vocabulary does not teach the app an `open` command.
+Grammar can also misrecognize unrelated speech as a command; compare false
+commands with grammar off/on while stationary.
+
+For low command-microphone level, Settings > Listening > **Command microphone**
+offers **Standard microphone** versus the existing **Voice recognition microphone**.
+Save, then compare the same phrase/distance with gain at 100% first. If still
+quiet, try 150-200% input gain and save. This is bounded digital amplification
+(100-300%), not hardware microphone sensitivity or automatic noise cancellation;
+it raises noise too and can clip loud speech. Reduce gain if accuracy worsens.
+Both options persist and apply to the next command recording, including
+push-to-talk/overlay/hands-free ASR; wake-word audio is unchanged. Older settings
+retain the original source and 100% gain. No audio is saved. Firmware decides the
+physical mic route and source processing: if both sources remain quiet, check
+the unit's selected internal/external mic, connector and mounting while parked.
+No improved far-field accuracy has yet been measured on the head unit.
+
+Milestone 6 adds opt-in, memory-only voice diagnostics: Diagnostics > Voice
+diagnostics > Reset, exercise listening, Snapshot, then Export JSON through the
+document picker. Events/counters contain no audio or transcripts. Resources are
+sampled only on Snapshot; diagnostics start off after process restart. See the
+[wake-word acceptance report](docs/WAKE_WORD_ACCEPTANCE.md) for audited engine/
+model details, editable proposed thresholds, raw-count protocols, non-root ADB
+steps and outstanding physical gates. All K2501 measurements remain pending;
+passing host tests/build is not wake-word acceptance.
 
 Automated results and manual acceptance gates are tracked in
 [the test plan](docs/TEST_PLAN.md). Host JVM/Compose tests cannot establish

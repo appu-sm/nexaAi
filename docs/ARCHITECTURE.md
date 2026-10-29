@@ -1,5 +1,45 @@
 # Architecture
 
+## Command Capture Readiness and Input Controls
+
+The coordinator remains Initializing during Vosk grammar/recognizer construction;
+the engine's readiness callback publishes Listening only after AudioRecord enters
+recording state. This avoids prompting speech before capture starts. The legacy
+engine method is retained with a default bridge for alternate/fake engines.
+Wake audio still closes before command capture and is not replayed.
+
+Two optional schema-1 settings configure command capture: `commandAudioSource`
+(`VOICE_RECOGNITION` default or `MIC`) and `commandInputGainPercent` (100 default,
+100-300 allowed). Old files retain original behavior. Validated options are read
+once before the next capture, not changed mid-buffer. Bounded in-place integer
+amplification affects only the samples actually read and saturates to PCM16;
+100% is unchanged. This is not a hardware gain, noise suppression or measured
+accuracy improvement. Only Vosk command input changes; native wake thresholds,
+audio, model, parser and radio mappings do not. Settings persist/export through
+the existing strict configuration path; physical source routing remains OEM-owned.
+
+## Milestone 6 Diagnostics
+
+One application-owned `VoiceDiagnostics` is injected into the existing coordinator,
+native detector/ASR wrappers, TTS callbacks and microphone service. Typed events
+use elapsedRealtime milliseconds; no UI-state inference, transcript strings or
+per-frame samples. A synchronized 512-event ring and bounded event/code counters
+are opt-in, memory-only and resettable. Events identify actual capture boundaries,
+manual versus native wake triggers and observed service re-creations, not OS-wide
+uptime. Complete retained event pairs yield count/median and p95 only at >=20;
+failures, cancellations and acoustic endpoints are not invented as successes.
+
+`ResourceMetrics` is injectable and read only on explicit Snapshot, off main.
+Android reads own-process PSS, optional RSS and cumulative CPU time plus supported
+device-wide battery/thermal status. Missing values are omitted. No background
+sampler, new permission/dependency or persistent audio is introduced. ViewModel
+holds a frozen preview; user-confirmed SAF JSON export is separate from portable
+configuration and capped at 512 KiB. Reset clears the preview/history but not
+previously exported files. Process death loses diagnostics and disables capture
+of metrics until explicit re-enable. No service restart, detector tuning, boot
+policy or radio/command change is authorized by diagnostics. See
+[acceptance protocol and metric limitations](WAKE_WORD_ACCEPTANCE.md).
+
 ## Baseline decisions
 
 Single Android application module, Kotlin, Gradle Kotlin DSL, Compose Material 3.

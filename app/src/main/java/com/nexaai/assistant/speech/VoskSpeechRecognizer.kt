@@ -1,6 +1,8 @@
 package com.nexaai.assistant.speech
 
 import android.media.AudioFormat
+import com.nexaai.assistant.diagnostics.VoiceDiagnostics
+import com.nexaai.assistant.diagnostics.VoiceEvent
 import android.media.AudioRecord
 import android.media.AudioManager
 import android.os.Build
@@ -24,8 +26,26 @@ import org.json.JSONArray
 import org.vosk.Model
 import org.vosk.Recognizer
 
+data class CommandAudioInput(val source: String = "VOICE_RECOGNITION", val gainPercent: Int = 100) {
+    init {
+        require(source in setOf("VOICE_RECOGNITION", "MIC"))
+        require(gainPercent in 100..300)
+    }
+}
+
+internal fun applyCommandInputGain(samples: ShortArray, count: Int, gainPercent: Int) {
+    require(count in 0..samples.size && gainPercent in 100..300)
+    if (gainPercent == 100) return
+    for (index in 0 until count) {
+        samples[index] = (samples[index].toInt() * gainPercent / 100)
+            .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+    }
+}
+
 class VoskSpeechRecognizerEngine(
     private val modelDirectory: File,
+    private val diagnostics: VoiceDiagnostics = VoiceDiagnostics(),
+    private val input: suspend () -> CommandAudioInput = { CommandAudioInput() },
     private val grammar: suspend () -> VoskGrammar? = { null },
 ) : SpeechRecognizerEngine {
     @Volatile private var model: Model? = null
@@ -46,7 +66,9 @@ class VoskSpeechRecognizerEngine(
         }
     }
 
-    override suspend fun recognize(onPartialResult: (String) -> Unit): String = withContext(Dispatchers.IO) {
+    override suspend fun recognize(onPartialResult: (String) -> Unit): String = recognize({}, onPartialResult)
+
+    override suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit): String = withContext(Dispatchers.IO) {
         val loadedModel = model ?: throw IOException("Offline speech model is not loaded.")
         check(recording.compareAndSet(false, true)) { "A microphone session is already active." }
         val minimumBytes = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -60,7 +82,9 @@ class VoskSpeechRecognizerEngine(
         var recordingCallback: AudioManager.AudioRecordingCallback? = null
         var recognizer: Recognizer? = null
         val interrupted = AtomicBoolean(false)
+        var captureStarted = false
         try {
+            val captureInput = input()
             val sessionGrammar = grammar()
             recognizer = try {
                 if (sessionGrammar == null) Recognizer(loadedModel, sampleRate.toFloat())
@@ -68,12 +92,16 @@ class VoskSpeechRecognizerEngine(
             } catch (failure: Exception) {
                 throw IOException("Vosk recognizer initialization failed. Grammar mode requires a model supporting dynamic grammar; use the recommended small English model or turn grammar mode off.", failure)
             }
-            audio = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate,
+            val source = if (captureInput.source == "MIC") MediaRecorder.AudioSource.MIC else MediaRecorder.AudioSource.VOICE_RECOGNITION
+            audio = AudioRecord(source, sampleRate,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferBytes)
             if (audio.state != AudioRecord.STATE_INITIALIZED) throw IOException("Microphone could not be initialized.")
             recorder = audio
             audio.startRecording()
             if (audio.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IOException("Microphone did not enter recording state.")
+            captureStarted = true
+            diagnostics.record(VoiceEvent.ASR_READY)
+            onReady()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val callback = object : AudioManager.AudioRecordingCallback() {
                     override fun onRecordingConfigChanged(configurations: List<android.media.AudioRecordingConfiguration>) {
@@ -97,6 +125,7 @@ class VoskSpeechRecognizerEngine(
                     throw IOException("Microphone read failed ($count).")
                 }
                 if (count == 0) continue
+                applyCommandInputGain(samples, count, captureInput.gainPercent)
                 val endpoint = recognizer.acceptWaveForm(samples, count)
                 val json = if (endpoint) recognizer.result else recognizer.partialResult
                 completedVoskTranscript(endpoint, json, onPartialResult)?.let {
@@ -120,6 +149,7 @@ class VoskSpeechRecognizerEngine(
                 if (capture.recordingState == AudioRecord.RECORDSTATE_RECORDING) runCatching { capture.stop() }
                 capture.release()
             }
+            if (captureStarted) diagnostics.record(VoiceEvent.ASR_CAPTURE_STOP)
             recognizer?.close()
         }
     }

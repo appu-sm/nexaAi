@@ -1,6 +1,7 @@
 package com.nexaai.assistant
 
 import com.nexaai.assistant.speech.*
+import com.nexaai.assistant.diagnostics.*
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.runBlocking
@@ -43,6 +44,7 @@ class WakeWordDetectorTest {
     }
 
     @Test fun modelLoadsOnceAndOrdinaryFramesDoNotTriggerUntilKeywordInferenceMatches() = runBlocking {
+        val metrics = VoiceDiagnostics().apply { setEnabled(true) }
         var loads = 0
         var frames = 0
         var captures = 0
@@ -70,7 +72,7 @@ class WakeWordDetectorTest {
                 }
                 override fun close() { released++ }
             }
-        })
+        }, metrics)
         detector.initialize("Hey Nexa")
         detector.initialize("Hey Nexa")
         assertEquals(1, loads)
@@ -79,6 +81,8 @@ class WakeWordDetectorTest {
         assertEquals(3, frames)
         assertEquals(1, captures)
         assertEquals(1, closes)
+        assertEquals(listOf(VoiceEvent.DETECTOR_READY, VoiceEvent.DETECTOR_READY,
+            VoiceEvent.WAKE_CAPTURE_START, VoiceEvent.WAKE_DETECTED, VoiceEvent.WAKE_CAPTURE_STOP), metrics.snapshot().map { it.event })
         detector.release()
         detector.release()
         assertEquals(1, released)

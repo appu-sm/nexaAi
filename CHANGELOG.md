@@ -2,6 +2,28 @@
 
 ## 0.1.0 - In development
 
+- Name packaged APKs `<project-name>.<build-type>.<version>.apk`, including
+    NexaAI.debug.0.1.0.apk and NexaAI.release.0.1.0.apk. Centralize app version/code
+    and enabled build types in settings.gradle.kts alongside the project name;
+    keep actual variant labels and Android version metadata consistent. Signing
+    behavior is unchanged; release signing still requires separate configuration.
+
+- Quiet/missing-first-word command follow-up: publish Listening only after actual
+    microphone capture starts, not during Vosk grammar preparation. Add saved
+    command microphone source (voice-recognition/standard) and bounded software
+    input gain (100-300%, unchanged defaults), with saturating PCM16 processing.
+    Preserve wake detection, exact aliases, allowlisting and radio behavior.
+    Document source/gain/grammar comparisons; physical accuracy remains unverified.
+
+- Milestone 6 validation: optional bounded monotonic voice events/counters,
+    retained-pair latency summaries, on-demand injectable process/battery/thermal
+    snapshots, reset/inspect and confirmed diagnostic JSON export. Add fake-clock,
+    lifecycle instrumentation, compact UI and export regressions; no audio or
+    transcripts retained, no engine/threshold/command/radio behavior change.
+    Document reproducible quality, latency, resource and soak procedures with
+    editable provisional budgets and pending K2501 acceptance gates. No physical
+    measurements or firmware compatibility claims.
+
 - Fix listening green spilling onto the robot's body: use a circular chest-light
     mask centered at (50%, 70.5%), radius 5.5%, including the pale center pixels.
     Give overlay text and its pointer a neutral grey (#424242) background; fix a

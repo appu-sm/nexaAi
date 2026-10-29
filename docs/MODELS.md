@@ -46,6 +46,16 @@ memory use, CPU, startup, accuracy and ABI compatibility have not been measured.
 
 ## Vosk Grammar Mode
 
+For missing leading words, wait for the real command Listening indication before
+speaking; grammar/recognizer preparation precedes microphone readiness. For quiet
+command audio, Settings > Listening > Command microphone offers the existing
+VOICE_RECOGNITION source or standard MIC plus saved 100-300% software input gain
+(default 100%). Compare sources at unity gain before increasing to 150-200%.
+These are next-capture command-ASR controls, not wake sensitivity, acoustic
+retraining, noise removal or guaranteed firmware mic routing. Gain amplifies
+noise and saturates loud PCM16 samples. Record source/gain with future acceptance
+runs; no target accuracy improvement is claimed without a physical comparison.
+
 In **Settings > Listening**, enable **Vosk grammar mode** to constrain command
 recognition. It is off by default. Enter optional custom words or phrases in
 **Custom grammar words**, one entry per line, then choose **Save custom words**.

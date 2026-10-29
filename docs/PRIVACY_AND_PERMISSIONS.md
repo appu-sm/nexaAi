@@ -20,6 +20,18 @@ exported documents remain wherever the user saved them.
 Debug logging is unavailable, off, and does not record transcripts. There are no
 local logs to clear. Destructive configuration resets require confirmation.
 
+Milestone 6 adds separate optional voice diagnostics, off after process restart.
+Only bounded typed event timestamps/counters and explicitly requested resource
+snapshots are retained in memory; no transcript, audio buffer or exception text
+is accepted by the collector. Reset clears events/counters/preview. Snapshot reads
+process PSS/RSS/cumulative CPU and supported device-wide battery/thermal values;
+no background profiler or new permission is added. Export JSON requires choosing
+and confirming a destination via Android's document picker and writes the frozen
+preview (<=512 KiB), not raw audio or configuration. Exported reports reveal event
+timing and process/resource activity: choose a trusted local provider and delete
+old reports there. Reset/process exit cannot delete previously exported documents.
+No telemetry, runtime network request or automatic persistent diagnostics is added.
+
 ## Microphone and offline speech
 
 - `RECORD_AUDIO`: declared for push-to-talk/hands-free and requested only after an

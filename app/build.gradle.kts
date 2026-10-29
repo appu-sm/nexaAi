@@ -4,6 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val appVersionCode: Int by extra
+val apkBuildTypes: List<String> by extra
+
 android {
     namespace = "com.nexaai.assistant"
     compileSdk = 35
@@ -11,9 +14,12 @@ android {
         applicationId = "com.nexaai.assistant"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = project.version.toString()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        apkBuildTypes.forEach { maybeCreate(it) }
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -23,6 +29,19 @@ android {
     kotlinOptions { jvmTarget = "17" }
     testOptions { unitTests.isIncludeAndroidResources = true }
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/nexaArtwork"))
+
+    applicationVariants.all {
+        val apkName = "${rootProject.name}.${buildType.name}.${versionName}.apk"
+        outputs.all {
+            (this as com.android.build.gradle.api.ApkVariantOutput).outputFileName = apkName
+        }
+    }
+}
+
+androidComponents {
+    beforeVariants { variant ->
+        variant.enable = variant.buildType in apkBuildTypes
+    }
 }
 
 val prepareNexaArtwork by tasks.registering(Copy::class) {

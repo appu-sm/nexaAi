@@ -17,11 +17,15 @@ class VoskGrammarTest {
         val config = enabled.copy(commands = enabled.commands.map {
             if (it.id == CommandId.PAUSE) it.copy(enabled = false) else it
         })
-        val grammar = VoskGrammar.build(config, listOf(AllowedApp("trusted.maps", listOf("maps", "navigation"))))!!
+        val apps = listOf(AllowedApp("trusted.maps", listOf("maps", "navigation")), AllowedApp("trusted.clock", listOf("clock")))
+        val grammar = VoskGrammar.build(config, apps)!!
         assertTrue("[unk]" in grammar.phrases)
         assertTrue("volume up" in grammar.phrases)
         assertTrue("open maps" in grammar.phrases)
         assertTrue("launch navigation" in grammar.phrases)
+        assertTrue("open clock" in grammar.phrases)
+        assertTrue(RuleBasedCommandParser().parse("open clock", config, apps) is ParseResult.Resolved)
+        assertTrue(RuleBasedCommandParser().parse("clock", config, apps) is ParseResult.Rejected)
         assertFalse("pause" in grammar.phrases)
         assertTrue(grammar.phrases.none { '{' in it || '}' in it })
         assertEquals(grammar.phrases.size, grammar.phrases.distinct().size)

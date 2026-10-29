@@ -1,6 +1,8 @@
 package com.nexaai.assistant.speech
 
 import android.content.ContentResolver
+import com.nexaai.assistant.diagnostics.VoiceDiagnostics
+import com.nexaai.assistant.diagnostics.VoiceEvent
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -68,8 +70,10 @@ class SherpaWakeWordDetector(
     private val directory: File,
     private val audioFactory: () -> WakeAudioSource = { AndroidWakeAudioSource() },
     private val inferenceFactory: (File) -> KeywordInference = { SherpaKeywordInference(it) },
+    private val diagnostics: VoiceDiagnostics = VoiceDiagnostics(),
 ) : WakeWordDetector {
     private var inference: KeywordInference? = null
+    private var capturedBefore = false
     @Volatile private var audio: WakeAudioSource? = null
 
     override suspend fun initialize(phrase: String) = withContext(Dispatchers.IO) {
@@ -79,12 +83,16 @@ class SherpaWakeWordDetector(
             catch (failure: LinkageError) { throw IOException("Wake-word native library is incompatible with this ABI.", failure) }
             catch (failure: Exception) { throw IOException("Wake-word model is incompatible or corrupt. Reinstall it.", failure) }
         }
+        diagnostics.record(VoiceEvent.DETECTOR_READY)
     }
 
     override suspend fun awaitDetection() = withContext(Dispatchers.IO) {
         val keyword = inference ?: throw IOException("Wake-word model is not initialized.")
         val capture = audioFactory()
         audio = capture
+        diagnostics.record(VoiceEvent.WAKE_CAPTURE_START)
+        if (capturedBefore) diagnostics.record(VoiceEvent.LISTENING_RESUMED)
+        capturedBefore = true
         try {
             val pcm = ShortArray(1600)
             val normalized = FloatArray(1600)
@@ -98,11 +106,14 @@ class SherpaWakeWordDetector(
                     offset += count
                 }
                 for (index in pcm.indices) normalized[index] = pcm[index] / 32768f
-                if (keyword.accept(normalized)) break
+                if (keyword.accept(normalized)) {
+                    diagnostics.record(VoiceEvent.WAKE_DETECTED)
+                    break
+                }
             }
         } finally {
             audio = null
-            capture.close()
+            try { capture.close() } finally { diagnostics.record(VoiceEvent.WAKE_CAPTURE_STOP) }
         }
     }
 
@@ -111,6 +122,7 @@ class SherpaWakeWordDetector(
         stop()
         inference?.close()
         inference = null
+        capturedBefore = false
     }
 }
 

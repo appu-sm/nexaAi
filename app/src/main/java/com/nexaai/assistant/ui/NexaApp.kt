@@ -82,6 +82,9 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let(viewModel::exportDocument)
     }
+    val diagnosticExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let(viewModel::exportDiagnostics)
+    }
     val modelImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::installSpeechModel)
     }
@@ -204,7 +207,7 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                     { reset = "settings" }, { importer.launch(arrayOf("application/json", "text/plain")) },
                                     { exporter.launch("nexaai-configuration.json") }, viewModel::setTtsEnabled, state.speechOutput,
                                     state.handsFreeEnabled, viewModel::setWakePhrase,
-                                    viewModel::setGrammarEnabled, viewModel::setGrammarWords,
+                                    viewModel::setGrammarEnabled, viewModel::setGrammarWords, viewModel::setCommandAudioInput,
                                     state.overlay, { enabled ->
                                         if (enabled && android.os.Build.VERSION.SDK_INT >= 33 &&
                                             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -218,7 +221,11 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                 modelImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                             } }
                             composable(Destination.DIAGNOSTICS.name) { DiagnosticsScreen(device, state.controls, state.modelInstalled, state.speechOutput,
-                                configuration.settings, state.overlay) { viewModel.refreshControls(); viewModel.refreshOverlay() } }
+                                configuration.settings, state.overlay,
+                                { viewModel.refreshControls(); viewModel.refreshOverlay() }) {
+                                    VoiceDiagnosticsPanel(viewModel) { diagnosticExporter.launch("nexaai-voice-diagnostics.json") }
+                                }
+                            }
                             composable(Destination.HELP.name) { HelpScreen(configuration.settings) }
                         }
                     }
@@ -438,6 +445,7 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
     setEnabled: (Boolean) -> Unit, reset: () -> Unit, importConfig: () -> Unit, exportConfig: () -> Unit,
     setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState, handsFree: Boolean, setWakePhrase: (String) -> Unit,
     setGrammarEnabled: (Boolean) -> Unit, setGrammarWords: (List<String>) -> Unit,
+    setCommandAudioInput: (String, Int) -> Unit,
     overlay: OverlayRuntime, setOverlayEnabled: (Boolean) -> Unit, setAutoStart: (Boolean) -> Unit,
     setOverlayAppearance: (Int, Int) -> Unit, refreshOverlay: () -> Unit) {
     var name by rememberSaveable(settings.displayName) { mutableStateOf(settings.displayName) }
@@ -460,6 +468,7 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
         Text("Offline-only: enforced. No network permission. Haptics and debug logs unavailable; no logs stored.")
         HorizontalDivider()
         Text("Listening", style = MaterialTheme.typography.titleLarge)
+        CommandMicrophoneSettings(settings, editable, setCommandAudioInput)
         OutlinedTextField(wakePhrase, { wakePhrase = it }, label = { Text("Wake phrase") },
             enabled = editable && !handsFree, singleLine = true, isError = phraseError != null,
             supportingText = { phraseError?.let { Text(it) } },
@@ -505,6 +514,31 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
 }
 
 @Composable
+private fun CommandMicrophoneSettings(settings: AssistantSettings, editable: Boolean, save: (String, Int) -> Unit) {
+    var source by rememberSaveable(settings.commandAudioSource) { mutableStateOf(settings.commandAudioSource) }
+    var gain by rememberSaveable(settings.commandInputGainPercent) { mutableFloatStateOf(settings.commandInputGainPercent.toFloat()) }
+    var expanded by remember { mutableStateOf(false) }
+    Text("Command microphone", style = MaterialTheme.typography.titleMedium)
+    Box {
+        OutlinedButton(onClick = { expanded = true }, enabled = editable, modifier = Modifier.testTag("command_audio_source")) {
+            Icon(Icons.Default.Mic, null)
+            Text(if (source == "MIC") "Standard microphone" else "Voice recognition microphone")
+        }
+        DropdownMenu(expanded, { expanded = false }) {
+            listOf("VOICE_RECOGNITION" to "Voice recognition microphone", "MIC" to "Standard microphone").forEach { (value, label) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { source = value; expanded = false })
+            }
+        }
+    }
+    Text("Input gain: ${gain.toInt()}%")
+    Slider(gain, { gain = it }, valueRange = 100f..300f, steps = 7, enabled = editable,
+        modifier = Modifier.testTag("command_input_gain").semantics { contentDescription = "Command input gain" })
+    TextButton(onClick = { save(source, gain.toInt()) }, enabled = editable, modifier = Modifier.testTag("save_command_audio")) {
+        Icon(Icons.Default.Save, null); Text("Save command microphone")
+    }
+}
+
+@Composable
 private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, wakePhrase: String, handsFree: Boolean, importWakeModel: () -> Unit,
     importModel: () -> Unit) = Page("Models") {
     Icon(Icons.Default.Storage, null, Modifier.size(40.dp))
@@ -522,7 +556,8 @@ private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, wakePhrase:
 
 @Composable
 private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, modelInstalled: Boolean,
-    speechOutput: SpeechOutputState, settings: AssistantSettings, overlay: OverlayRuntime, refresh: () -> Unit) = Page("Diagnostics") {
+    speechOutput: SpeechOutputState, settings: AssistantSettings, overlay: OverlayRuntime, refresh: () -> Unit,
+    diagnosticsContent: @Composable () -> Unit) = Page("Diagnostics") {
     Section("This device", "${device.manufacturer} / ${device.model}\nAndroid ${device.androidVersion}, API ${device.api}")
     Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested on explicit listening action"}.\nMicrophone/overlay foreground-service, notification and boot permissions declared. Overlay grant: ${overlay.permission}. Internet permission: not declared.")
     Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition: use Home push-to-talk\nHands-free: explicit-start microphone service; target unverified")
@@ -534,8 +569,34 @@ private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, mod
     }}")
     TextButton(onClick = refresh, enabled = !controls.working) { Icon(Icons.Default.Refresh, null); Text("Refresh capabilities") }
     MediaAccessSettings()
-    Section("Evidence", "No integration tests performed on target hardware. Target ABI, actual RAM, free storage and firmware interface still require verification. No audio, transcripts or local error logs stored.")
-    Text("Diagnostic export unavailable; configuration export excludes device identifiers.")
+    Section("Evidence", "No integration tests performed on target hardware. Target ABI, actual RAM, free storage and firmware interface still require verification. Audio and transcripts are not stored. Optional diagnostic events remain in memory until reset or process exit; exporting writes the selected snapshot.")
+    diagnosticsContent()
+}
+
+@Composable
+private fun VoiceDiagnosticsPanel(viewModel: AssistantViewModel, export: () -> Unit) {
+    val enabled by viewModel.diagnosticsEnabled.collectAsStateWithLifecycle()
+    val report by viewModel.diagnosticReport.collectAsStateWithLifecycle()
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Voice diagnostics", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            Switch(enabled, viewModel::setDiagnosticsEnabled,
+                modifier = Modifier.testTag("voice_diagnostics").semantics { contentDescription = "Voice diagnostics" })
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { viewModel.inspectDiagnostics() }, modifier = Modifier.testTag("diagnostics_snapshot")) {
+                Icon(Icons.Default.Refresh, null); Text("Snapshot")
+            }
+            TextButton(onClick = viewModel::resetDiagnostics, modifier = Modifier.testTag("diagnostics_reset")) {
+                Icon(Icons.Default.Delete, null); Text("Reset")
+            }
+            TextButton(onClick = export, enabled = report.isNotEmpty()) {
+                Icon(Icons.Default.SaveAlt, null); Text("Export JSON")
+            }
+        }
+        if (report.isNotEmpty()) Text(report, modifier = Modifier.heightIn(max = 220.dp)
+            .verticalScroll(rememberScrollState()).testTag("diagnostics_report"), style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable

@@ -25,9 +25,11 @@ object ConfigurationCodec {
     private val settingKeys = setOf("assistantEnabled", "displayName", "offlineOnly", "listeningMode",
         "wakeWordEnabled", "wakePhrase", "autoStartAfterBoot", "overlayEnabled", "ttsEnabled",
         "confirmationMode", "llmEnabled", "debugLoggingEnabled", "grammarEnabled", "grammarCustomWords",
-        "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent")
+        "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent",
+        "commandAudioSource", "commandInputGainPercent")
     private val optionalSettingKeys = setOf("grammarEnabled", "grammarCustomWords",
-        "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent")
+        "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent",
+        "commandAudioSource", "commandInputGainPercent")
 
     fun encode(config: Configuration): String {
         ConfigurationValidator.validate(config)
@@ -42,6 +44,7 @@ object ConfigurationCodec {
                 put("grammarEnabled", grammarEnabled); put("grammarCustomWords", JSONArray(grammarCustomWords))
                 put("overlaySizeDp", overlaySizeDp); put("overlayOpacityPercent", overlayOpacityPercent)
                 put("overlayXPercent", overlayXPercent); put("overlayYPercent", overlayYPercent)
+                put("commandAudioSource", commandAudioSource); put("commandInputGainPercent", commandInputGainPercent)
             }
         }
         val encoded = JSONObject().put("schemaVersion", config.schemaVersion).put("settings", settings)
@@ -127,6 +130,8 @@ object ConfigurationCodec {
                 overlayOpacityPercent = integer("overlayOpacityPercent", 90),
                 overlayXPercent = integer("overlayXPercent", 100),
                 overlayYPercent = integer("overlayYPercent", 50),
+                commandAudioSource = if (settings.has("commandAudioSource")) string("commandAudioSource") else "VOICE_RECOGNITION",
+                commandInputGainPercent = integer("commandInputGainPercent", 100),
             ), commands = migratedCommands)
             ConfigurationValidator.validate(config)
             return config
