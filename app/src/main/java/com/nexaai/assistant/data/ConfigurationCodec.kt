@@ -26,10 +26,10 @@ object ConfigurationCodec {
         "wakeWordEnabled", "wakePhrase", "autoStartAfterBoot", "overlayEnabled", "ttsEnabled",
         "confirmationMode", "llmEnabled", "debugLoggingEnabled", "grammarEnabled", "grammarCustomWords",
         "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent",
-        "commandAudioSource", "commandInputGainPercent")
+        "commandAudioSource", "commandInputGainPercent", "asrEngineId")
     private val optionalSettingKeys = setOf("grammarEnabled", "grammarCustomWords",
         "overlaySizeDp", "overlayOpacityPercent", "overlayXPercent", "overlayYPercent",
-        "commandAudioSource", "commandInputGainPercent")
+        "commandAudioSource", "commandInputGainPercent", "asrEngineId")
 
     fun encode(config: Configuration): String {
         ConfigurationValidator.validate(config)
@@ -45,6 +45,7 @@ object ConfigurationCodec {
                 put("overlaySizeDp", overlaySizeDp); put("overlayOpacityPercent", overlayOpacityPercent)
                 put("overlayXPercent", overlayXPercent); put("overlayYPercent", overlayYPercent)
                 put("commandAudioSource", commandAudioSource); put("commandInputGainPercent", commandInputGainPercent)
+                put("asrEngineId", asrEngineId)
             }
         }
         val encoded = JSONObject().put("schemaVersion", config.schemaVersion).put("settings", settings)
@@ -132,6 +133,7 @@ object ConfigurationCodec {
                 overlayYPercent = integer("overlayYPercent", 50),
                 commandAudioSource = if (settings.has("commandAudioSource")) string("commandAudioSource") else "VOICE_RECOGNITION",
                 commandInputGainPercent = integer("commandInputGainPercent", 100),
+                asrEngineId = if (settings.has("asrEngineId")) string("asrEngineId") else "vosk",
             ), commands = migratedCommands)
             ConfigurationValidator.validate(config)
             return config

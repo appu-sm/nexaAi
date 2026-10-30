@@ -9,6 +9,52 @@ baseline inspection (`adb devices -l`: empty).
 
 ## Automated gates
 
+### Moonshine Base English (2026-10-30)
+
+Final `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+--console=plain` succeeded against the final source: 115 tests across 18 suites,
+zero failures/errors/skips; lint 0 errors and 26 warnings. `git diff --check`
+passed. APK: `app/build/outputs/apk/debug/NexaAI.debug.0.1.0.apk`, 225,051,761
+bytes, SHA-256
+`272c7ebca6f99f677045605cb87f2bd1188d76117841499618d0fc7601b59e32`.
+No model weights are bundled.
+
+Focused host checks pass for exact v2 encoder/merged-decoder configuration,
+nonempty assets/license/VAD requirements, old-config migration and strict engine
+IDs, persisted selection across DataStore close/reopen, selected-only model
+creation and release-before-switch, normalized PCM/read bounds, capture closure
+before decoding, utterance/model cleanup, cancellation, safe ZIP replacement and
+traversal rejection. Coordinator simulations cover Processing, the batch deadline,
+busy selection rejection and no dispatch from late cancelled inference. Compact
+Compose tests cover selecting Moonshine, disabling Vosk-only grammar and model
+setup/status without enabling hands-free. Terminal sentence punctuation is removed
+without changing internal punctuation, decimal points or spoken-number syntax.
+
+The production backend uses the real sherpa API; host lifecycle tests inject
+backend/capture boundaries. They do not execute Android native model inference.
+All actual target results remain pending. Stationary device checklist:
+
+1. Prepare/import the exact ZIP in [Models](MODELS.md#moonshine-base-english).
+	Verify successful native loading, missing/corrupt/wrong-model errors, storage
+	exhaustion/replacement cancellation, model status and selection after restart.
+2. With networking disabled, compare the same consented Indian English command
+	recordings/live phrases for Vosk and Moonshine. Record raw/final text, intended
+	and parsed command ID, parameter accuracy and unintended actions separately.
+	Include volume/FM numbers, app names, negatives, silence, radio/music, clipped
+	speech and utterances longer than the 12 s VAD segment cap. Test while parked.
+3. Confirm real Listening readiness, 0.8 s trailing-silence behavior, Finish,
+	Cancel, permission denial/revocation and audio interruption. Batch decoding must
+	begin only after capture closes; no late cancelled transcript may dispatch.
+	Native inference may finish before cancellation cleanup completes.
+4. Repeat push-to-talk, explicit wake-to-command handoff, manual overlay trigger,
+	TTS/rearming and Stop at least 20 times per selected engine. Verify only one
+	recorder/ASR model and no duplicate dispatch. Recheck wake accuracy/false accepts
+	because the shared runtime changed from sherpa 1.12.14 to 2.0.1.
+5. Measure cold/warm model and endpoint-to-result latency, peak PSS/RSS, CPU,
+	low-memory behavior and radio/navigation coexistence. Record device ABI/build,
+	microphone source/gain and acoustic conditions. Model storage size and host
+	compilation are not evidence of acceptable performance on a <=2 GB head unit.
+
 ### Settings-Driven APK Naming (2026-10-29)
 
 `settings.gradle.kts` owns project name, app version name/code and enabled APK

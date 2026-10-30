@@ -22,6 +22,58 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SpeechSessionTest {
+    @Test fun batchRecognitionShowsProcessingAndUsesItsOwnDeadline() = runTest {
+        val result = CompletableDeferred<String>()
+        val controller = Controller()
+        val engine = object : SpeechRecognizerEngine {
+            override val recognitionTimeoutMillis: Long = 45_000
+            override suspend fun initialize() {}
+            override suspend fun recognize(onPartialResult: (String) -> Unit): String = error("Callbacks required")
+            override suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit, onProcessing: () -> Unit): String {
+                onReady()
+                onProcessing()
+                return result.await()
+            }
+            override fun stop() {}
+            override fun release() {}
+        }
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this) { false }
+        voice.start()
+        runCurrent()
+        assertEquals(VoiceState.Processing, voice.state.value)
+        advanceTimeBy(16_001)
+        runCurrent()
+        assertTrue(controller.commands.isEmpty())
+        assertEquals(VoiceState.Processing, voice.state.value)
+        var saved = false
+        assertTrue(runCatching { voice.changeEngine { saved = true } }.exceptionOrNull() is IllegalArgumentException)
+        assertFalse(saved)
+        result.complete("volume up")
+        voice.awaitSessionEnd()
+        assertEquals(1, controller.commands.size)
+        voice.changeEngine { saved = true }
+        assertTrue(saved)
+    }
+
+    @Test fun cancelledNativeLikeDecodeCannotDispatchLateTranscript() = runTest {
+        val result = CompletableDeferred<String>()
+        val controller = Controller()
+        val engine = object : SpeechRecognizerEngine {
+            override suspend fun initialize() {}
+            override suspend fun recognize(onPartialResult: (String) -> Unit): String =
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { result.await() }
+            override fun stop() {}
+            override fun release() {}
+        }
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this) { false }
+        voice.start()
+        runCurrent()
+        voice.cancel()
+        result.complete("volume up")
+        voice.awaitSessionEnd()
+        assertTrue(controller.commands.isEmpty())
+    }
+
     @Test fun commandInputGainPreservesUnityBoundsReadCountAndClampsWithoutOverflow() {
         val samples = shortArrayOf(1000, -1000, 20000, -20000, 123)
         applyCommandInputGain(samples, 4, 100)

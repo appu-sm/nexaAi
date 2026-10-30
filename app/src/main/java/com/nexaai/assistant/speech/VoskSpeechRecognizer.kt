@@ -1,21 +1,11 @@
 package com.nexaai.assistant.speech
 
-import android.media.AudioFormat
 import com.nexaai.assistant.diagnostics.VoiceDiagnostics
-import com.nexaai.assistant.diagnostics.VoiceEvent
-import android.media.AudioRecord
-import android.media.AudioManager
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.media.MediaRecorder
 import android.net.Uri
 import android.content.ContentResolver
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.Executor
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,13 +36,11 @@ class VoskSpeechRecognizerEngine(
     private val modelDirectory: File,
     private val diagnostics: VoiceDiagnostics = VoiceDiagnostics(),
     private val input: suspend () -> CommandAudioInput = { CommandAudioInput() },
+    private val capture: CommandAudioCapture = AndroidCommandAudioCapture(diagnostics, input),
     private val grammar: suspend () -> VoskGrammar? = { null },
 ) : SpeechRecognizerEngine {
     @Volatile private var model: Model? = null
-    @Volatile private var recorder: AudioRecord? = null
-    private val recording = AtomicBoolean(false)
     private val sampleRate = 16_000
-    private val maximumCaptureMillis = 15_000L
 
     override suspend fun initialize() = withContext(Dispatchers.IO) {
         if (model != null) return@withContext
@@ -70,96 +58,28 @@ class VoskSpeechRecognizerEngine(
 
     override suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit): String = withContext(Dispatchers.IO) {
         val loadedModel = model ?: throw IOException("Offline speech model is not loaded.")
-        check(recording.compareAndSet(false, true)) { "A microphone session is already active." }
-        val minimumBytes = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        if (minimumBytes <= 0 || minimumBytes > MAX_AUDIO_BUFFER_BYTES / 2) {
-            recording.set(false)
-            throw IOException("This microphone does not support 16 kHz mono PCM audio.")
+        val sessionGrammar = grammar()
+        val recognizer = try {
+            if (sessionGrammar == null) Recognizer(loadedModel, sampleRate.toFloat())
+            else Recognizer(loadedModel, sampleRate.toFloat(), JSONArray(sessionGrammar.phrases).toString())
+        } catch (failure: Exception) {
+            throw IOException("Vosk recognizer initialization failed. Grammar mode requires a model supporting dynamic grammar; use the recommended small English model or turn grammar mode off.", failure)
         }
-        val bufferBytes = maxOf(minimumBytes * 2, sampleRate)
-        val bufferSamples = bufferBytes / 2
-        var audio: AudioRecord? = null
-        var recordingCallback: AudioManager.AudioRecordingCallback? = null
-        var recognizer: Recognizer? = null
-        val interrupted = AtomicBoolean(false)
-        var captureStarted = false
-        try {
-            val captureInput = input()
-            val sessionGrammar = grammar()
-            recognizer = try {
-                if (sessionGrammar == null) Recognizer(loadedModel, sampleRate.toFloat())
-                else Recognizer(loadedModel, sampleRate.toFloat(), JSONArray(sessionGrammar.phrases).toString())
-            } catch (failure: Exception) {
-                throw IOException("Vosk recognizer initialization failed. Grammar mode requires a model supporting dynamic grammar; use the recommended small English model or turn grammar mode off.", failure)
+        recognizer.use { decoder ->
+            var completed: String? = null
+            capture.capture(onReady) { samples, count ->
+                val endpoint = decoder.acceptWaveForm(samples, count)
+                val json = if (endpoint) decoder.result else decoder.partialResult
+                completed = completedVoskTranscript(endpoint, json, onPartialResult)
+                completed != null
             }
-            val source = if (captureInput.source == "MIC") MediaRecorder.AudioSource.MIC else MediaRecorder.AudioSource.VOICE_RECOGNITION
-            audio = AudioRecord(source, sampleRate,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferBytes)
-            if (audio.state != AudioRecord.STATE_INITIALIZED) throw IOException("Microphone could not be initialized.")
-            recorder = audio
-            audio.startRecording()
-            if (audio.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IOException("Microphone did not enter recording state.")
-            captureStarted = true
-            diagnostics.record(VoiceEvent.ASR_READY)
-            onReady()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val callback = object : AudioManager.AudioRecordingCallback() {
-                    override fun onRecordingConfigChanged(configurations: List<android.media.AudioRecordingConfiguration>) {
-                        if (configurations.any { it.clientAudioSessionId == audio.audioSessionId && it.isClientSilenced }) {
-                            interrupted.set(true)
-                            stop()
-                        }
-                    }
-                }
-                recordingCallback = callback
-                audio.registerAudioRecordingCallback(Executor { task -> Handler(Looper.getMainLooper()).post(task) }, callback)
-            }
-            val samples = ShortArray(bufferSamples)
-            val startedAt = android.os.SystemClock.elapsedRealtime()
-            while (recording.get() && android.os.SystemClock.elapsedRealtime() - startedAt < maximumCaptureMillis) {
-                currentCoroutineContext().ensureActive()
-                val count = audio.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
-                if (interrupted.get()) throw IOException("Microphone was silenced by Android or another audio session. Try again.")
-                if (count < 0) {
-                    if (!recording.get()) break
-                    throw IOException("Microphone read failed ($count).")
-                }
-                if (count == 0) continue
-                applyCommandInputGain(samples, count, captureInput.gainPercent)
-                val endpoint = recognizer.acceptWaveForm(samples, count)
-                val json = if (endpoint) recognizer.result else recognizer.partialResult
-                completedVoskTranscript(endpoint, json, onPartialResult)?.let {
-                    return@withContext sessionGrammar?.canonicalTranscript(it) ?: it
-                }
-            }
-            if (interrupted.get()) throw IOException("Microphone was interrupted; command discarded.")
-            val transcript = parseResult(recognizer.finalResult, "text")
+            currentCoroutineContext().ensureActive()
+            val transcript = completed ?: parseResult(decoder.finalResult, "text")
             sessionGrammar?.canonicalTranscript(transcript) ?: transcript
-        } catch (failure: SecurityException) {
-            throw IOException("Microphone permission is required to listen.", failure)
-        } catch (failure: IllegalStateException) {
-            throw IOException("Microphone became unavailable during recognition.", failure)
-        } finally {
-            recording.set(false)
-            recorder = null
-            audio?.let { capture ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    recordingCallback?.let { runCatching { capture.unregisterAudioRecordingCallback(it) } }
-                }
-                if (capture.recordingState == AudioRecord.RECORDSTATE_RECORDING) runCatching { capture.stop() }
-                capture.release()
-            }
-            if (captureStarted) diagnostics.record(VoiceEvent.ASR_CAPTURE_STOP)
-            recognizer?.close()
         }
     }
 
-    override fun stop() {
-        recording.set(false)
-        recorder?.let { capture ->
-            if (capture.recordingState == AudioRecord.RECORDSTATE_RECORDING) runCatching { capture.stop() }
-        }
-    }
+    override fun stop() = capture.stop()
 
     override fun release() {
         stop()
@@ -169,9 +89,6 @@ class VoskSpeechRecognizerEngine(
 
     private fun parseResult(json: String, key: String): String = runCatching { JSONObject(json).optString(key).trim() }.getOrDefault("")
 
-    private companion object {
-        const val MAX_AUDIO_BUFFER_BYTES = 128 * 1024
-    }
 }
 
 internal fun completedVoskTranscript(
@@ -210,6 +127,7 @@ class VoskModelInstaller(
                     var expandedBytes = 0L
                     var entries = 0
                     while (true) {
+                        currentCoroutineContext().ensureActive()
                         val entry = zip.nextEntry ?: break
                         if (++entries > MAX_ZIP_ENTRIES) throw IOException("Model ZIP contains too many files.")
                         val relative = entry.name.replace('\\', '/')
@@ -225,6 +143,7 @@ class VoskModelInstaller(
                             target.outputStream().buffered().use { destination ->
                                 val buffer = ByteArray(16 * 1024)
                                 while (true) {
+                                    currentCoroutineContext().ensureActive()
                                     val read = zip.read(buffer)
                                     if (read < 0) break
                                     expandedBytes += read
@@ -238,8 +157,13 @@ class VoskModelInstaller(
                 }
             }
             val modelRoot = staging.walkTopDown().firstOrNull(::isModelRoot)
-                ?: throw IOException("The ZIP is incomplete; required model files are missing.")
+                ?: run {
+                    val closestRoot = staging.walkTopDown().filter { it.isDirectory }
+                        .minByOrNull { missingFiles(it).size } ?: staging
+                    throw IOException("Missing or empty required files: ${missingFiles(closestRoot).joinToString(", ")}.")
+                }
             validateRoot(modelRoot)
+            currentCoroutineContext().ensureActive()
             if (backup.exists()) backup.deleteRecursively()
             if (installedDirectory.exists() && !installedDirectory.renameTo(backup)) throw IOException("Could not replace the existing model safely.")
             if (!modelRoot.renameTo(installedDirectory)) {
@@ -253,10 +177,11 @@ class VoskModelInstaller(
         Unit
     }
 
-    private fun isModelRoot(directory: File): Boolean = directory.isDirectory &&
-        requiredFiles.all { relative ->
-            File(directory, relative).let { it.isFile && it.length() > 0 }
-        }
+    private fun missingFiles(directory: File): List<String> = requiredFiles.filter { relative ->
+        File(directory, relative).let { !it.isFile || it.length() == 0L }
+    }
+
+    private fun isModelRoot(directory: File): Boolean = directory.isDirectory && missingFiles(directory).isEmpty()
 
     private companion object {
         const val MAX_ZIP_ENTRIES = 20_000

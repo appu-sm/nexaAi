@@ -1,5 +1,21 @@
 # Device Compatibility
 
+## Moonshine Base English (2026-10-30)
+
+Selectable offline command ASR is implemented using sherpa-onnx 2.0.1 and the
+quantized Base English 2026-02-27 export plus Silero VAD. The resolved AAR contains
+arm64-v8a, armeabi-v7a, x86 and x86_64 native libraries; min API 28 is unchanged.
+This verifies packaging only, not Android native execution on the K2501. Vosk
+remains default and existing models/settings are retained. No permission added.
+
+All actual Moonshine native model loading, microphone/VAD segmentation, silence
+and negative-command false accepts, Indian English/numeric accuracy, offline
+operation, cold/warm latency, peak PSS/RSS, CPU and radio/navigation coexistence
+are **not yet measured on target hardware**. Wake regression testing is also
+required after the shared sherpa runtime upgrade. Small storage size is not proof
+that the model fits the unit's available RAM. See Models and TEST_PLAN for setup
+and acceptance checks. No device attachment check was repeated in this work.
+
 ## Quiet Command Audio Follow-Up (2026-10-29)
 
 User reports a missing first word (`open clock` -> `clock`) and needing loud/near

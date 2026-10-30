@@ -230,6 +230,14 @@ class AssistantViewModel(
         repository.update { it.copy(settings = it.settings.copy(grammarEnabled = enabled)) }
     }
 
+    fun setAsrEngine(id: String) = perform("Speech engine saved") {
+        require(id in AsrEngines.labels) { "Unknown offline speech engine" }
+        val save: suspend () -> Unit = {
+            repository.update { it.copy(settings = it.settings.copy(asrEngineId = id)) }
+        }
+        voiceRuntime?.changeEngine(save) ?: save()
+    }
+
     fun setCommandAudioInput(source: String, gainPercent: Int) = perform("Command microphone saved") {
         repository.update { it.copy(settings = it.settings.copy(commandAudioSource = source, commandInputGainPercent = gainPercent)) }
     }

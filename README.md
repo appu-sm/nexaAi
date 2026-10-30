@@ -67,13 +67,17 @@ hardware actions. Test actual controls only while stationary.
 - Media requires optional notification-listener access in Commands/Diagnostics,
     exactly one active session and an advertised action. Results say request sent;
     playback changes are not verified.
-- Push-to-talk uses Vosk locally after a user imports the model ZIP; only final
+- Push-to-talk uses selected Vosk or Moonshine Base English locally after a user imports its model ZIP; only final
     transcripts reach the existing deterministic command dispatcher. No model is bundled.
+- Select **Settings > Listening > Moonshine Base English**, then import its
+    prepared ZIP from Models. The quantized 2026-02-27 export needs Silero VAD
+    alongside its encoder/merged decoder. See [Moonshine setup](docs/MODELS.md#moonshine-base-english).
+    This is batch ASR after utterance capture, not streaming partial transcription.
 - Settings > Listening offers optional Vosk grammar mode (off by default) and
     saved custom vocabulary, one entry per line. Generated phrases follow enabled
     aliases, allowlisted app names and spoken volume/FM values. Changes apply on
     the next capture; custom words do not create commands or retrain the model.
-- Hands-free uses real sherpa-onnx `1.12.14` keyword spotting, not a continuous
+- Hands-free uses real sherpa-onnx `2.0.1` keyword spotting, not a continuous
     Vosk transcription loop. Import the English keyword model configured for
     your English wake phrase, save the same phrase in Settings > Listening
     (default **Hey Nexa**), explicitly enable the listening switch, grant microphone access,

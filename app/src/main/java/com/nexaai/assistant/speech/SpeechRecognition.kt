@@ -52,12 +52,15 @@ sealed interface SpeechOutputState {
 }
 
 interface SpeechRecognizerEngine {
+    val recognitionTimeoutMillis: Long get() = 16_000L
     suspend fun initialize()
     suspend fun recognize(onPartialResult: (String) -> Unit): String
     suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit): String {
         onReady()
         return recognize(onPartialResult)
     }
+    suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit, onProcessing: () -> Unit): String =
+        recognize(onReady, onPartialResult)
     fun stop()
     fun release()
 }
@@ -106,6 +109,18 @@ class SpeechSessionCoordinator(
     private val handsFree = MutableStateFlow(false)
     val handsFreeEnabled: StateFlow<Boolean> = handsFree.asStateFlow()
 
+    fun refreshModelStatus() { installed.value = installer.isInstalled() }
+
+    suspend fun changeEngine(save: suspend () -> Unit) {
+        require(active.compareAndSet(false, true)) { "Stop listening or model installation before changing the speech engine." }
+        try {
+            withContext(Dispatchers.IO) { engine.release() }
+            save()
+            refreshModelStatus()
+            mutableState.value = VoiceState.Idle("Speech engine selection saved.")
+        } finally { active.set(false) }
+    }
+
     fun enableHandsFree(phrase: String): Boolean {
         val wake = detector ?: run {
             mutableState.value = VoiceState.Error("Wake-word engine unavailable. Push-to-talk remains available.")
@@ -124,7 +139,6 @@ class SpeechSessionCoordinator(
                 output.stopAndAwait()
                 wake.initialize(phrase)
                 diagnosticStage = DiagnosticCode.ASR
-                engine.initialize()
                 while (true) {
                     currentCoroutineContext().ensureActive()
                     val previous = mutableState.value as? VoiceState.Completed
@@ -149,6 +163,7 @@ class SpeechSessionCoordinator(
                     currentCoroutineContext().ensureActive()
                     mutableState.value = VoiceState.WakeWordDetected
                     diagnosticStage = DiagnosticCode.ASR
+                    engine.initialize()
                     recognizeCommand()
                     delay(350)
                 }
@@ -227,12 +242,12 @@ class SpeechSessionCoordinator(
         mutableState.value = VoiceState.Initializing
         diagnostics.record(VoiceEvent.ASR_ACTIVATION)
         val finalText = try {
-            withTimeoutOrNull(16_000) {
+            withTimeoutOrNull(engine.recognitionTimeoutMillis) {
                 engine.recognize(onReady = {
                     if (active.get() && !finishing.get()) mutableState.value = VoiceState.Listening()
-                }) { partial ->
+                }, onPartialResult = { partial ->
                     if (active.get() && !finishing.get()) mutableState.value = VoiceState.Listening(partial.take(300))
-                }
+                }, onProcessing = { mutableState.value = VoiceState.Processing })
             } ?: run {
                 diagnostics.record(VoiceEvent.TIMEOUT, DiagnosticCode.ASR)
                 ""

@@ -17,6 +17,28 @@ class ShellUiTest {
 
     @Test
     @Config(sdk = [28], qualifiers = "w360dp-h640dp-port")
+    fun moonshineSelectionPersistsAndModelsShowsRequiredAssets() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("microphone").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        navigate("SETTINGS")
+        compose.onNodeWithTag("asr_engine").performScrollTo().performClick()
+        compose.onNodeWithText("Moonshine Base English").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Speech engine saved").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("grammar_enabled").performScrollTo().assertIsNotEnabled()
+        navigate("HOME")
+        navigate("SETTINGS")
+        compose.onNodeWithTag("asr_engine").performScrollTo().assertTextContains("Moonshine Base English", substring = true)
+        navigate("MODELS")
+        compose.onNodeWithText("No installed speech model").assertExists()
+        compose.onNodeWithText("Moonshine Base English: quantized", substring = true).assertExists()
+        compose.onNodeWithTag("hands_free_enabled").assertIsOff()
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "w360dp-h640dp-port")
     fun commandMicrophoneSourceAndGainAreSavedInCompactSettings() {
         compose.waitUntil(10_000) {
             compose.onAllNodesWithTag("microphone").fetchSemanticsNodes().any { node ->

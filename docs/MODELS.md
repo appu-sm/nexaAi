@@ -7,8 +7,9 @@ The model is loaded only on explicit speech initialization and reused for sessio
 | Category | Candidate | Current status |
 | --- | --- | --- |
 | Speech | Vosk Android `0.3.47` + `vosk-model-small-en-us-0.15` | Runtime integrated; model must be imported; device verification pending |
+| Speech alternative | Moonshine Base English quantized `2026-02-27`, sherpa-onnx `2.0.1` + Silero VAD | Real batch recognizer integrated; manual ZIP import; accuracy/latency/RAM unverified |
 | Optional speech | Whisper.cpp tiny | Deferred pending measured latency and memory |
-| Wake word | sherpa-onnx Android `1.12.14`, English GigaSpeech KWS 3.3M 2024-01-01 | Real keyword runtime integrated; explicit Hey Nexa ZIP import required; target unverified |
+| Wake word | sherpa-onnx Android `2.0.1`, English GigaSpeech KWS 3.3M 2024-01-01 | Real keyword runtime integrated; explicit Hey Nexa ZIP import required; target unverified |
 | Local LLM | No selected runtime/model | Off; not a release requirement |
 | TTS | Android TextToSpeech | Integrated; selects installed English voices without the network-synthesis feature; target availability unverified |
 
@@ -43,6 +44,89 @@ Central. Model archives are not committed to this repository. Model file size is
 not the same as expanded storage or runtime RAM; the Vosk catalog describes small
 models as typically around 50 MB and roughly 300 MB runtime memory. Actual K2501
 memory use, CPU, startup, accuracy and ABI compatibility have not been measured.
+
+## Moonshine Base English
+
+If import reports an invalid/incomplete ZIP containing only `LICENSE`,
+`decoder_model_merged.ort`, `encoder_model.ort` and `tokens.txt`, add
+`silero_vad.onnx` from the separate download below, beside those four files,
+and import the updated ZIP. The Moonshine archive does not supply this speech
+endpoint detector. The updated importer names missing or empty required files.
+
+Use exactly `sherpa-onnx-moonshine-base-en-quantized-2026-02-27` from the
+[official sherpa instructions](https://k2-fsa.github.io/sherpa/onnx/moonshine/models-v2.html#sherpa-onnx-moonshine-base-en-quantized-2026-02-27-english).
+The export contains approximately 135 MiB of model data (30 MiB encoder and
+105 MiB merged decoder), plus vocabulary, license and samples. This is storage,
+not measured runtime RAM. The date identifies the export, not necessarily the
+training date. Older four-file Moonshine exports and Moonshine Streaming models
+are not interchangeable with this configuration.
+
+On a trusted computer, explicitly download and prepare the local ZIP:
+
+```sh
+mkdir -p moonshine-setup
+cd moonshine-setup
+curl -fL https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-base-en-quantized-2026-02-27.tar.bz2 \
+	-o moonshine-base-en.tar.bz2
+tar -xjf moonshine-base-en.tar.bz2
+cd sherpa-onnx-moonshine-base-en-quantized-2026-02-27
+curl -fL https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx \
+	-o silero_vad.onnx
+zip -j ../nexa-moonshine-base-en.zip encoder_model.ort decoder_model_merged.ort \
+	tokens.txt LICENSE silero_vad.onnx
+```
+
+These commands require curl, tar with bzip2 support and zip. They are instructions,
+not automatic app downloads. Keep the upstream model's `LICENSE` and review it
+before use or redistribution; do not infer weight licensing from sherpa's
+Apache-2.0 engine license or older Moonshine cards. Silero VAD is published under
+[MIT](https://github.com/snakers4/silero-vad/blob/master/LICENSE); retain its notice
+when redistributing the additional model. Model redistribution/license approval
+has not been certified by this implementation.
+
+1. Stop listening/hands-free, then choose **Moonshine Base English** from the
+	 engine dropdown in **Settings > Listening**.
+2. Transfer `nexa-moonshine-base-en.zip` to the head unit. In **Models**, choose
+	 **Choose model ZIP**. A tar.bz2 file cannot be imported directly.
+3. Wait for successful native model initialization, then use Home push-to-talk
+	 or the existing explicit hands-free/overlay controls while stationary.
+
+All five required files must be nonempty. Installation uses the existing
+160 MiB expanded/20,000-entry traversal-safe, cancellation-aware ZIP staging and
+backup mechanism, at `$filesDir/sherpa-onnx-moonshine-base-en-quantized-2026-02-27`.
+ZIP checks verify structure, not authenticity or semantic model compatibility.
+Only import trusted files. Budget additional free storage for the input archive,
+staged extraction and old-model backup during replacement.
+
+Vosk remains the default; optional schema-1 `asrEngineId` persists the selection
+(`vosk` or `moonshine_base_en`). Missing values retain Vosk; unknown IDs are
+rejected. Only the chosen ASR is instantiated; switching releases the previous
+one before loading another and never silently falls back. Existing Vosk model
+files are retained. The selection control rejects active listening/imports.
+Vosk grammar preferences are retained but are not applied to Moonshine.
+
+Both engines share 16 kHz mono PCM16 capture, the saved microphone source/gain,
+real readiness, interruption handling and Stop/Cancel. Moonshine uses Silero VAD
+at threshold 0.5, 0.25 s minimum speech, 0.8 s trailing silence and a 12 s maximum
+speech segment. Capture is independently capped at 15 s. It decodes only the
+first segment, after the recorder closes, with one CPU thread and greedy search.
+Finish flushes pending speech; no detected speech returns an empty result without
+ASR decoding. There are no synthetic partial transcripts. UI changes to Processing
+before batch inference; the total capture/inference deadline is 45 s (Vosk stays
+16 s). A blocking native call cannot be forcibly interrupted: cancellation stops
+capture immediately, waits for native cleanup and discards late results before
+dispatch. Wake capture closes before command capture; TTS follows final decoding.
+
+Exact parser/validator/allowlist/radio behavior is unchanged. The Moonshine adapter
+removes terminal sentence punctuation (`.`, `!`, `?`) but preserves internal
+punctuation and decimal points. Internal punctuation and word-form numbers may
+not match existing aliases/number syntax; no fuzzy matching or semantic command
+rewriting is added.
+Seq2seq hallucinations and false valid commands on noise are acceptance risks.
+Compare command ID and parameter accuracy on consented Indian English recordings,
+including silence, negative speech, numbers, radio/music and clipped commands.
+Measure cold/warm latency, peak PSS/RSS, CPU and interference on the actual unit;
+no fit, superiority, accuracy, native model loading or acoustic claim is verified.
 
 ## Vosk Grammar Mode
 
@@ -117,11 +201,12 @@ without actual measurements. The no-LLM route remains the default.
 
 ## Hey Nexa keyword model
 
-The runtime is `com.k2fsa:sherpa-onnx:1.12.14@aar`, resolved from the
-[official versioned release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.12.14).
-The downloaded AAR SHA-256 was checked against the release asset metadata:
-`5a629a899888cb2760e245d9d5340858b15591aee7fa13644cf57199ff2829b9`.
-sherpa-onnx is [Apache-2.0](https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.14/LICENSE);
+The runtime is `com.k2fsa:sherpa-onnx:2.0.1@aar`, resolved from the
+[official versioned release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.1).
+It replaces 1.12.14 to expose Moonshine v2's merged-decoder Kotlin configuration.
+The AAR packages arm64-v8a, armeabi-v7a, x86 and x86_64; packaging is not native
+head-unit verification. The existing keyword model and detector settings are unchanged.
+sherpa-onnx is [Apache-2.0](https://github.com/k2-fsa/sherpa-onnx/blob/v2.0.1/LICENSE);
 its ONNX Runtime backend is MIT. Preserve upstream licenses and dependency notices
 when redistributing the runtime. No key, account, online activation or runtime
 network permission is required. Only build dependencies are fetched by Gradle.
@@ -168,7 +253,7 @@ first (Debian/Ubuntu: `sudo apt install python3-venv`), then retry. In a new
 terminal, run the activation command again before using `sherpa-onnx-cli`.
 The host tokenizer is pinned separately to `1.12.26` because `1.12.14` is not
 available for every host Python/package index. It generates BPE text using the
-downloaded model's own vocabulary; the Android runtime remains `1.12.14`.
+downloaded model's own vocabulary; the Android runtime is pinned separately.
 `click` supplies the CLI and `sentencepiece` supplies BPE tokenization; install
 both explicitly because the sherpa package does not declare all CLI dependencies.
 
@@ -208,9 +293,10 @@ Quantized upstream files total roughly 5 MiB (not measured RAM). Wake capture us
 16 kHz mono PCM16, 100 ms frames, reusable 3.2 KiB PCM and 6.4 KiB float arrays,
 and a bounded AudioRecord buffer. The model loads once per enabled session; new
 streams discard old wake audio and new recorders separate wake and command capture.
-Vosk is loaded once alongside KWS for warm command activation; this increases idle
-RAM versus unloading Vosk after every command, and must be measured on the 2 GB unit.
-Both models are released when hands-free ends. No LLM is loaded.
+The selected ASR loads on the first command, not while initially waiting for wake.
+It is then cached for warm commands alongside KWS; measure that idle memory on the
+2 GB unit. Switching releases the prior ASR, and both KWS/ASR are released when
+hands-free ends. No LLM is loaded.
 
 Compared with alternatives, Porcupine requires an access key and a separate
 licensing/setup review; openWakeWord needs additional Android audio/frontend

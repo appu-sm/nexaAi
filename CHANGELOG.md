@@ -2,6 +2,15 @@
 
 ## 0.1.0 - In development
 
+- Add selectable offline Moonshine Base English (quantized 2026-02-27 export)
+    with Silero utterance endpointing and real sherpa 2.0.1 merged-decoder APIs.
+    Preserve Vosk defaults/models/grammar, share bounded command capture, persist
+    selection, route model imports and release the prior ASR before switching.
+    Release microphone before batch inference; expose Processing, bounded deadline
+    and cancellation-safe final-only dispatch. Defer hands-free ASR loading until
+    the first command. Add lifecycle/config/import/UI regressions and manual setup;
+    all physical accuracy/resource/wake regression gates remain pending.
+
 - Name packaged APKs `<project-name>.<build-type>.<version>.apk`, including
     NexaAI.debug.0.1.0.apk and NexaAI.release.0.1.0.apk. Centralize app version/code
     and enabled build types in settings.gradle.kts alongside the project name;

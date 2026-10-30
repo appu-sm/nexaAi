@@ -208,6 +208,7 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                     { exporter.launch("nexaai-configuration.json") }, viewModel::setTtsEnabled, state.speechOutput,
                                     state.handsFreeEnabled, viewModel::setWakePhrase,
                                     viewModel::setGrammarEnabled, viewModel::setGrammarWords, viewModel::setCommandAudioInput,
+                                    viewModel::setAsrEngine, state.voice,
                                     state.overlay, { enabled ->
                                         if (enabled && android.os.Build.VERSION.SDK_INT >= 33 &&
                                             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -217,7 +218,7 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                     }, viewModel::setAutoStart, viewModel::setOverlayAppearance, viewModel::refreshOverlay)
                             }
                             composable(Destination.MODELS.name) { ModelsScreen(state.modelInstalled, state.voice,
-                                configuration.settings.wakePhrase, state.handsFreeEnabled, { wakeImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
+                                configuration.settings.asrEngineId, configuration.settings.wakePhrase, state.handsFreeEnabled, { wakeImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
                                 modelImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
                             } }
                             composable(Destination.DIAGNOSTICS.name) { DiagnosticsScreen(device, state.controls, state.modelInstalled, state.speechOutput,
@@ -446,12 +447,14 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
     setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState, handsFree: Boolean, setWakePhrase: (String) -> Unit,
     setGrammarEnabled: (Boolean) -> Unit, setGrammarWords: (List<String>) -> Unit,
     setCommandAudioInput: (String, Int) -> Unit,
+    setAsrEngine: (String) -> Unit, voice: VoiceState,
     overlay: OverlayRuntime, setOverlayEnabled: (Boolean) -> Unit, setAutoStart: (Boolean) -> Unit,
     setOverlayAppearance: (Int, Int) -> Unit, refreshOverlay: () -> Unit) {
     var name by rememberSaveable(settings.displayName) { mutableStateOf(settings.displayName) }
     var wakePhrase by rememberSaveable(settings.wakePhrase) { mutableStateOf(settings.wakePhrase) }
     val phraseError = runCatching { ConfigurationValidator.validateWakePhrase(wakePhrase.trim()) }.exceptionOrNull()?.message
     var grammarWords by rememberSaveable(settings.grammarCustomWords) { mutableStateOf(settings.grammarCustomWords.joinToString("\n")) }
+    val grammarEditable = editable && settings.asrEngineId == "vosk"
     val customWords = grammarWords.lines().map(::normalizeAlias).filter(String::isNotEmpty).distinct()
     val grammarError = runCatching { ConfigurationValidator.validateGrammarWords(customWords) }.exceptionOrNull()?.message
     Page("Settings") {
@@ -468,6 +471,20 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
         Text("Offline-only: enforced. No network permission. Haptics and debug logs unavailable; no logs stored.")
         HorizontalDivider()
         Text("Listening", style = MaterialTheme.typography.titleLarge)
+        var engineMenu by remember { mutableStateOf(false) }
+        Box {
+            OutlinedButton(onClick = { engineMenu = true }, enabled = editable && !handsFree &&
+                (voice is VoiceState.Idle || voice is VoiceState.Error || voice is VoiceState.Completed),
+                modifier = Modifier.testTag("asr_engine")) {
+                Icon(Icons.Default.Mic, null)
+                Text(AsrEngines.label(settings.asrEngineId))
+            }
+            DropdownMenu(engineMenu, { engineMenu = false }) {
+                AsrEngines.labels.forEach { (id, label) ->
+                    DropdownMenuItem(text = { Text(label) }, onClick = { engineMenu = false; setAsrEngine(id) })
+                }
+            }
+        }
         CommandMicrophoneSettings(settings, editable, setCommandAudioInput)
         OutlinedTextField(wakePhrase, { wakePhrase = it }, label = { Text("Wake phrase") },
             enabled = editable && !handsFree, singleLine = true, isError = phraseError != null,
@@ -479,14 +496,14 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Vosk grammar mode", Modifier.weight(1f))
-            Switch(settings.grammarEnabled, setGrammarEnabled, enabled = editable,
+            Switch(settings.grammarEnabled, setGrammarEnabled, enabled = grammarEditable,
                 modifier = Modifier.testTag("grammar_enabled").semantics { contentDescription = "Vosk grammar mode" })
         }
         OutlinedTextField(grammarWords, { grammarWords = it }, label = { Text("Custom grammar words") },
-            enabled = editable, minLines = 3, maxLines = 6, isError = grammarError != null,
+            enabled = grammarEditable, minLines = 3, maxLines = 6, isError = grammarError != null,
             supportingText = { Text(grammarError ?: "${customWords.size} / 100 entries") },
             modifier = Modifier.fillMaxWidth().testTag("grammar_words"))
-        Button(onClick = { setGrammarWords(customWords) }, enabled = editable && grammarError == null,
+        Button(onClick = { setGrammarWords(customWords) }, enabled = grammarEditable && grammarError == null,
             modifier = Modifier.testTag("save_grammar_words")) {
             Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Save custom words")
         }
@@ -539,14 +556,18 @@ private fun CommandMicrophoneSettings(settings: AssistantSettings, editable: Boo
 }
 
 @Composable
-private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, wakePhrase: String, handsFree: Boolean, importWakeModel: () -> Unit,
+private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, engineId: String, wakePhrase: String, handsFree: Boolean, importWakeModel: () -> Unit,
     importModel: () -> Unit) = Page("Models") {
     Icon(Icons.Default.Storage, null, Modifier.size(40.dp))
-    Text(if (modelInstalled) "Vosk English model installed" else "No installed speech model", style = MaterialTheme.typography.titleLarge)
-    Text("Speech: ${if (modelInstalled) "offline model installed" else "unavailable"}\nWake word: sherpa-onnx 1.12.14; $wakePhrase\nLocal LLM: off")
-    Text("Import the official vosk-model-small-en-us-0.15 ZIP (about 40 MB). It is stored in private app files; allow up to 160 MB expanded. No download is automatic.")
-    Text("Model license: Apache-2.0. Import requires the official model ZIP selected from local storage.")
-    val canImport = !handsFree && voice !is VoiceState.Initializing && voice !is VoiceState.Listening
+    Text(if (modelInstalled) "${AsrEngines.label(engineId)} model installed" else "No installed speech model", style = MaterialTheme.typography.titleLarge)
+    Text("Speech: ${AsrEngines.label(engineId)}; ${if (modelInstalled) "model installed" else "unavailable"}\nWake word: sherpa-onnx 2.0.1; $wakePhrase\nLocal LLM: off")
+    if (engineId == "moonshine_base_en") {
+        Text("Moonshine Base English: quantized 2026-02-27 export, about 135 MiB plus Silero VAD. Required: encoder_model.ort, decoder_model_merged.ort, tokens.txt, LICENSE, silero_vad.onnx.")
+        Text("Import a local ZIP containing those files. Upstream tar.bz2 archives must be extracted and repacked as ZIP. Setup and model license: docs/MODELS.md. No automatic download.")
+    } else {
+        Text("Import the official Vosk English small-model ZIP (about 40 MB). Private storage; up to 160 MiB expanded. Model license: Apache-2.0. No automatic download.")
+    }
+    val canImport = !handsFree && (voice is VoiceState.Idle || voice is VoiceState.Error || voice is VoiceState.Completed)
     Button(onClick = importModel, enabled = canImport) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Choose model ZIP") }
     Button(onClick = importWakeModel, enabled = canImport) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Choose wake-word ZIP") }
     Text("Wake model: English GigaSpeech 3.3M, Apache-2.0. Required: encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt, and one phrase in keywords.txt matching the saved wake phrase. Setup: docs/MODELS.md. No model is downloaded automatically.")
@@ -562,7 +583,7 @@ private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, mod
     Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested on explicit listening action"}.\nMicrophone/overlay foreground-service, notification and boot permissions declared. Overlay grant: ${overlay.permission}. Internet permission: not declared.")
     Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition: use Home push-to-talk\nHands-free: explicit-start microphone service; target unverified")
     Section("Overlay and startup", "Overlay configured: ${settings.overlayEnabled}\nOverlay service running: ${overlay.running}\nWindow attached: ${overlay.visible}\n${overlay.message}\nAuto-start configured: ${settings.autoStartAfterBoot}\n${overlay.startup}\nWake preference: ${settings.wakeWordEnabled}; saved preference is not proof of microphone activity.")
-    Section("Speech", "Vosk model: ${if (modelInstalled) "installed" else "missing"}\nSpeech output: ${when (speechOutput) {
+    Section("Speech", "${AsrEngines.label(settings.asrEngineId)} model: ${if (modelInstalled) "installed" else "missing"}\nSpeech output: ${when (speechOutput) {
         SpeechOutputState.Initializing -> "checking"
         SpeechOutputState.Ready -> "offline English voice available"
         is SpeechOutputState.Unavailable -> speechOutput.message
@@ -602,7 +623,7 @@ private fun VoiceDiagnosticsPanel(viewModel: AssistantViewModel, export: () -> U
 @Composable
 private fun HelpScreen(settings: AssistantSettings) = Page("Help and privacy") {
     Section("Current state", "${if (settings.assistantEnabled) "Assistant preference enabled" else "Assistant disabled"}. Push-to-talk or explicitly enabled ${settings.wakePhrase} hands-free. Background listening has an ongoing notification and Stop action.")
-    Section("Offline setup", "Import the official Vosk English small-model ZIP from Models. TTS uses only an installed English offline Android voice; no voice data is downloaded automatically.")
+    Section("Offline setup", "Select Vosk or Moonshine Base English in Settings and import its model ZIP from Models. TTS uses only an installed English offline Android voice; no voice data is downloaded automatically.")
     Section("Normal APK limits", "No force-stop of other apps, hidden radio API, root or system privilege. Radio and media availability require real firmware/app evidence.")
     Section("Your data", "Audio is processed locally and not saved or uploaded. Transcripts/results remain in memory only. Settings, command definitions and the app allowlist stay in private app storage. No cloud APIs, telemetry or analytics.")
     Section("Stop and disable", "Stop hands-free using the listening switch, overlay Stop control, or notification. Leaving Home cancels push-to-talk, not an enabled hands-free session. Overlay and auto-start are independent Settings switches, initially off. Auto-start only requests an enabled overlay after unlock, never listening. LLM remains off.")

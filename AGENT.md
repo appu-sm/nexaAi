@@ -764,6 +764,21 @@ and outstanding target checks are maintained in the test/device reports.
 
 ### Milestone 3 --- Offline speech and TTS
 
+Command-ASR extension (2026-10-30): preserve default Vosk and add optional schema-1
+`asrEngineId` (`vosk` / `moonshine_base_en`), saved in the existing configuration.
+Moonshine Base English uses the quantized 2026-02-27 encoder/merged-decoder export
+with Silero VAD through real sherpa-onnx 2.0.1 APIs. The runtime upgrade is required
+for the merged-decoder Kotlin configuration; wake model/thresholds remain unchanged
+but require physical regression testing. Both ASRs use one bounded capture owner;
+only one selected ASR loads, prior model released before switching, no hidden
+fallback. Moonshine releases capture before batch decoding, emits no partials,
+shows Processing, and uses a 45 s overall deadline (Vosk 16 s). Cancellation cannot
+interrupt native inference but blocks late dispatch and waits for cleanup. ASR
+loads on the first command rather than eagerly during initial wake waiting.
+Manual ZIP setup and separate weight-license review are in docs/MODELS.md. No
+weights bundled/downloaded automatically; no new permissions, fuzzy parser or
+radio changes. Native loading, accent accuracy, latency and target RAM are pending.
+
 Command-ASR follow-up (2026-10-29): show Listening only after AudioRecord starts,
 not during grammar/recognizer preparation. Optional schema-1 commandAudioSource
 (VOICE_RECOGNITION default / MIC) and commandInputGainPercent (100 default,

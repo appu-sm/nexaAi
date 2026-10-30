@@ -1,5 +1,33 @@
 # Architecture
 
+## Selectable Command ASR (2026-10-30)
+
+`SelectedSpeechEngine` implements the existing recognizer/installer interfaces.
+It awaits a ready, validated persisted configuration before creating an engine;
+only one ASR is instantiated and the old native model is released before switching.
+Schema-1 optional `asrEngineId` defaults to `vosk`; `moonshine_base_en` selects
+the exact quantized Moonshine Base English 2026-02-27 export. No fallback is hidden.
+Settings selection is serialized with the coordinator's voice/import gate; model
+availability follows configuration snapshots, including imports and resets.
+
+Vosk and Moonshine share one `AndroidCommandAudioCapture`: 16 kHz PCM16, the same
+bounded buffers, 15 s maximum, source/gain settings, readiness and interruption
+handling. Vosk retains its real streaming endpoints/grammar. Moonshine uses
+sherpa 2.0.1 `Vad`/Silero, then `OfflineRecognizer` with `mergedDecoder` after
+capture releases the microphone. VAD segments and streams are scoped to one
+utterance; the recognizer is cached. One CPU thread/greedy decoding, no partial
+results, unchanged final-only parser/validator/dispatch. Silence does not invoke
+the Moonshine decoder. Processing is visible before batch inference; its overall
+deadline is 45 s versus Vosk's 16 s. Native decode is not forcibly interruptible,
+so cancellation waits for cleanup and blocks late dispatch. Tests inject only
+the backend/resource boundaries; production always uses the real sherpa API.
+
+Wake KWS model/thresholds stay unchanged on the upgraded runtime. ASR initialization
+is deferred until the first command after wake capture closes; no boot listening,
+recording, networking or extra permissions are introduced. Physical native loading,
+accent accuracy, latency and resource budgets remain unverified. Setup and license
+review requirements are in [Models](MODELS.md#moonshine-base-english).
+
 ## Command Capture Readiness and Input Controls
 
 The coordinator remains Initializing during Vosk grammar/recognizer construction;

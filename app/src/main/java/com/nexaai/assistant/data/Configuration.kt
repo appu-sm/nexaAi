@@ -23,6 +23,7 @@ data class AssistantSettings(
     val overlayYPercent: Int = 50,
     val commandAudioSource: String = "VOICE_RECOGNITION",
     val commandInputGainPercent: Int = 100,
+    val asrEngineId: String = "vosk",
 )
 
 enum class CommandId { SET_VOLUME, VOLUME_UP, VOLUME_DOWN, MUTE, UNMUTE, LAUNCH_APP,
@@ -105,6 +106,7 @@ object ConfigurationValidator {
             require(displayName.trim() == displayName && displayName.length in 1..40 && displayName.none { it.isISOControl() }) { "Name must be 1-40 printable characters with no outer spaces" }
             validateWakePhrase(wakePhrase)
             validateGrammarWords(grammarCustomWords)
+            require(asrEngineId in setOf("vosk", "moonshine_base_en")) { "Unknown offline speech engine" }
             require(commandAudioSource in setOf("VOICE_RECOGNITION", "MIC") && commandInputGainPercent in 100..300) {
                 "Invalid command microphone source or gain (100-300 percent)"
             }
