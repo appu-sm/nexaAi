@@ -1,5 +1,24 @@
 # Device Compatibility
 
+## Switchable ASR (2026-10-29)
+
+Vosk 0.3.47 remains default; existing Indian English 0.4 files and private path
+are preserved. Alternative sherpa-onnx 1.12.14 uses its real Kotlin streaming API
+and English Zipformer 20M 2023-02-17 int8 candidate. The existing official AAR
+declares minimum API 21 and includes arm64-v8a, armeabi-v7a, x86 and x86_64;
+NexaAI retains min 28/Android 9. Manifest/dependencies/privileges are unchanged.
+Packaging and compilation are not native/firmware compatibility certification.
+
+Host tests cover persisted selection/restart, selected-only load, release ordering,
+busy exclusion, missing models, partial/final/cancel safety and identical synthetic
+PCM replay/scoring. Native Android recognition with installed models, actual mic
+handoffs/route, Indian English accuracy, latency/CPU, load peaks/steady RAM and
+resource retention across switching are **Not measured / unverified**. No target
+attachment check or physical run was performed. [Reproduction and pending gates](ASR_EVALUATION.md).
+Selected-model failure never silently falls back; PTT with another explicitly
+selected, installed engine and typed controls remain available. No accuracy or
+resource improvement is claimed.
+
 ## Quiet Command Audio Follow-Up (2026-10-29)
 
 User reports a missing first word (`open clock` -> `clock`) and needing loud/near

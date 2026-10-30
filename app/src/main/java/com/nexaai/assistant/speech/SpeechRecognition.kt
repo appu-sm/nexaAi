@@ -52,7 +52,18 @@ sealed interface SpeechOutputState {
 }
 
 interface SpeechRecognizerEngine {
+    val engineId: String get() = "vosk"
+    val displayName: String get() = "Vosk - Indian English"
+    val status: StateFlow<RecognitionStatus> get() = MutableStateFlow(RecognitionStatus.Unloaded)
     suspend fun initialize()
+    suspend fun openSession(): RecognitionSession = throw UnsupportedOperationException("Audio replay is unavailable for this engine.")
+    suspend fun recognizeResult(onReady: () -> Unit, onResult: (RecognitionResult) -> Unit): RecognitionResult {
+        val started = System.nanoTime() / 1_000_000
+        val transcript = recognize(onReady) { text ->
+            onResult(RecognitionResult(engineId, text, false, started, System.nanoTime() / 1_000_000))
+        }
+        return RecognitionResult(engineId, transcript, true, started, System.nanoTime() / 1_000_000)
+    }
     suspend fun recognize(onPartialResult: (String) -> Unit): String
     suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit): String {
         onReady()
@@ -61,6 +72,40 @@ interface SpeechRecognizerEngine {
     fun stop()
     fun release()
 }
+
+interface RecognitionSession : Closeable {
+    fun acceptAudioFrame(samples: ShortArray, count: Int): RecognitionResult
+    fun finish(): RecognitionResult
+    fun commandTranscript(result: RecognitionResult): String = result.transcript
+}
+
+sealed interface RecognitionStatus {
+    data object Unloaded : RecognitionStatus
+    data object Loading : RecognitionStatus
+    data object Ready : RecognitionStatus
+    data class Failed(val error: RecognitionError) : RecognitionStatus
+}
+
+enum class RecognitionErrorCode { UNKNOWN_ENGINE, MISSING_MODEL, INITIALIZATION, AUDIO, BUSY, TIMEOUT, EMPTY, MEMORY, NATIVE_INFERENCE }
+
+data class RecognitionError(
+    val engineId: String,
+    val code: RecognitionErrorCode,
+    val detail: String,
+    val recoverable: Boolean = true,
+)
+
+class RecognitionException(val error: RecognitionError, cause: Throwable? = null) :
+    java.io.IOException(error.detail, cause)
+
+data class RecognitionResult(
+    val engineId: String,
+    val transcript: String,
+    val isFinal: Boolean,
+    val startTimeMillis: Long,
+    val endTimeMillis: Long,
+    val confidence: Double? = null,
+)
 
 interface SpeechModelInstaller {
     fun isInstalled(): Boolean
@@ -95,6 +140,11 @@ class SpeechSessionCoordinator(
     private val mutableState = MutableStateFlow<VoiceState>(VoiceState.Idle())
     val state: StateFlow<VoiceState> = mutableState.asStateFlow()
     val outputState: StateFlow<SpeechOutputState> = output.state
+    val engineStatus: StateFlow<RecognitionStatus> = engine.status
+    val activeEngineId: String? get() = (engine as? SelectedSpeechEngine)?.activeEngineId
+    fun selectedModelInstalled(id: String): Boolean = (installer as? SelectedSpeechEngine)?.isInstalled(id) ?: installer.isInstalled()
+    val isActive: Boolean get() = active.get()
+    val evaluationReport = MutableStateFlow("")
     private val active = AtomicBoolean(false)
     private val finishing = AtomicBoolean(false)
     private var session: Job? = null
@@ -123,8 +173,6 @@ class SpeechSessionCoordinator(
                 mutableState.value = VoiceState.Initializing
                 output.stopAndAwait()
                 wake.initialize(phrase)
-                diagnosticStage = DiagnosticCode.ASR
-                engine.initialize()
                 while (true) {
                     currentCoroutineContext().ensureActive()
                     val previous = mutableState.value as? VoiceState.Completed
@@ -201,7 +249,6 @@ class SpeechSessionCoordinator(
             try {
                 mutableState.value = VoiceState.Initializing
                 output.stopAndAwait()
-                engine.initialize()
                 recognizeCommand()
             } catch (cancelled: CancellationException) {
                 diagnostics.record(if (cancelled is TimeoutCancellationException) VoiceEvent.TIMEOUT else VoiceEvent.CANCELLED,
@@ -225,14 +272,15 @@ class SpeechSessionCoordinator(
         finishing.set(false)
         currentCoroutineContext().ensureActive()
         mutableState.value = VoiceState.Initializing
+        engine.initialize()
         diagnostics.record(VoiceEvent.ASR_ACTIVATION)
         val finalText = try {
             withTimeoutOrNull(16_000) {
-                engine.recognize(onReady = {
+                engine.recognizeResult(onReady = {
                     if (active.get() && !finishing.get()) mutableState.value = VoiceState.Listening()
                 }) { partial ->
-                    if (active.get() && !finishing.get()) mutableState.value = VoiceState.Listening(partial.take(300))
-                }
+                    if (!partial.isFinal && active.get() && !finishing.get()) mutableState.value = VoiceState.Listening(partial.transcript.take(300))
+                }.takeIf { it.isFinal }?.transcript ?: ""
             } ?: run {
                 diagnostics.record(VoiceEvent.TIMEOUT, DiagnosticCode.ASR)
                 ""
@@ -280,11 +328,10 @@ class SpeechSessionCoordinator(
         session = scope.launch {
             try {
                 mutableState.value = VoiceState.Initializing
-                engine.release()
+                withContext(Dispatchers.IO) { engine.release() }
                 installer.install(uri)
-                engine.initialize()
-                installed.value = true
-                mutableState.value = VoiceState.Idle("Offline speech model installed and loaded.")
+                installed.value = installer.isInstalled()
+                mutableState.value = VoiceState.Idle("Selected offline speech model installed. It will load at the next recognition session.")
             } catch (cancelled: CancellationException) {
                 installed.value = installer.isInstalled()
                 mutableState.value = VoiceState.Idle("Model installation cancelled.")
@@ -296,6 +343,26 @@ class SpeechSessionCoordinator(
                 active.set(false)
             }
         }
+    }
+
+    fun evaluate(action: suspend () -> String): Boolean {
+        if (!active.compareAndSet(false, true)) return false
+        evaluationReport.value = ""
+        session = scope.launch {
+            try {
+                mutableState.value = VoiceState.Initializing
+                output.stopAndAwait()
+                withContext(Dispatchers.IO) { engine.release(); detector?.release() }
+                evaluationReport.value = withContext(Dispatchers.IO) { action() }
+                mutableState.value = VoiceState.Idle("ASR evaluation completed. No commands were executed.")
+            } catch (cancelled: CancellationException) {
+                mutableState.value = VoiceState.Idle("ASR evaluation cancelled; partial report discarded.")
+                throw cancelled
+            } catch (failure: Exception) {
+                mutableState.value = VoiceState.Error(failure.message ?: "ASR evaluation failed.")
+            } finally { active.set(false) }
+        }
+        return true
     }
 
     fun installWakeModel(uri: Uri, installer: SpeechModelInstaller) {

@@ -1,5 +1,58 @@
 # Architecture
 
+## Switchable ASR (2026-10-29)
+
+The existing `SpeechRecognizerEngine` is extended, not duplicated. It exposes
+stable identity, Loading/Ready/Failed/Unloaded status, timed typed partial/final
+results, typed errors and a closeable PCM `RecognitionSession`. Null confidence
+means unavailable, never zero or an invented score. Times are monotonic milliseconds,
+not wall-clock timestamps. The older String callback bridge remains for existing
+tests/alternate engines. Only explicitly final results pass the coordinator's
+existing prepare/validate/single-use execute path; cancellation is checked before
+dispatch. Raw text is kept by replay; optional Vosk grammar canonicalization
+remains only in the existing production Vosk command path.
+
+`SelectedSpeechEngine` snapshots schema-1 `asrEngineId`, waits for valid settings,
+serializes activation/import/recognition, and releases the old model before
+constructing its replacement. Unknown IDs fail closed; strict imports reject them.
+There is no automatic fallback. Menu changes are rejected while the coordinator
+is active. Config imports/resets can update preferences but cannot mutate an
+active decoder; they apply next session. The UI distinguishes selected from
+cached loaded engine. The cache releases at next switch, service teardown, import
+or evaluation; no two complete ASR models coexist. Startup/boot loads none.
+Hands-free now delays ASR loading until first command activation, instead of
+preloading Vosk before waiting for wake. The tiny KWS model may remain loaded
+alongside the one ASR model; its cost needs measurement.
+
+Microphone lifecycle:
+
+1. The application-owned coordinator gate excludes push-to-talk, hands-free,
+    imports and evaluation from one another.
+2. The unchanged wake detector stops/closes/joins its recorder before ASR starts.
+3. Both ASR adapters use one application-owned `AndroidCommandAudioCapture`.
+    Decoders consume frames and never create AudioRecord. Capture preserves
+    16 kHz mono PCM16, `max(minBufferBytes * 2, 16000)` buffer (minimum <=65536),
+    15 seconds, persisted source and saturating gain. A recorder is created once
+    per command, not per frame. Listening follows real recorder readiness.
+4. First nonempty endpoint or Finish flushes the decoder. Vosk retains its
+    acceptWaveForm/result/partialResult/finalResult and optional grammar behavior.
+    sherpa uses default endpoint rules (2.4 s silence; 1.4 s trailing speech silence;
+    20 s utterance rule, bounded by app capture), greedy CPU/one thread.
+5. Capture closes before decoder-session cleanup; models cache across commands.
+    Cancel stops capture, closes sessions and suppresses dispatch. Release follows
+    session join. TTS follows capture closure; hands-free waits for completion and
+    cooldown before reopening wake audio.
+6. Explicit replay takes the same gate, stops TTS, releases cached ASR/KWS, then
+    runs each ASR model sequentially on local PCM on IO. No recorder/controller runs.
+
+Session creation and frame calls are IO-caller operations. They deliberately do
+not return newly allocated native streams across cancellable dispatcher handoffs,
+which could discard ownership before cleanup. Loading/production/replay entry
+points provide IO. Native calls are not forcibly preemptible; deadlines apply at
+call/frame boundaries. Recoverable linkage/OOM errors surface truthfully; native
+aborts or OS kills need user restart. No permission, dependency or radio/parser/
+TTS policy change. See [evaluation](ASR_EVALUATION.md).
+
 ## Command Capture Readiness and Input Controls
 
 The coordinator remains Initializing during Vosk grammar/recognizer construction;
@@ -14,7 +67,7 @@ Two optional schema-1 settings configure command capture: `commandAudioSource`
 once before the next capture, not changed mid-buffer. Bounded in-place integer
 amplification affects only the samples actually read and saturates to PCM16;
 100% is unchanged. This is not a hardware gain, noise suppression or measured
-accuracy improvement. Only Vosk command input changes; native wake thresholds,
+accuracy improvement. Both command ASR engines share these controls; native wake thresholds,
 audio, model, parser and radio mappings do not. Settings persist/export through
 the existing strict configuration path; physical source routing remains OEM-owned.
 

@@ -9,6 +9,45 @@ baseline inspection (`adb devices -l`: empty).
 
 ## Automated gates
 
+### Switchable Offline ASR (2026-10-29)
+
+Final command:
+
+```sh
+./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
+```
+
+**BUILD SUCCESSFUL in 1m 56s**. **117 tests / 18 suites, zero failures, errors or
+skips. Android lint: 0 errors, 26 existing warnings.** All existing milestone,
+radio, overlay, startup, wake-word, command, TTS-coordination and UI tests ran.
+New tests cover selected-only model load/reuse, release-before-switch, busy stream
+exclusion, unknown IDs/no fallback, missing native models, exact PCM replay,
+parameter-versus-transcript scoring, valid/unsafe/consent-rejected ZIP cleanup,
+initialization error reporting, shared capture cancellation/close ordering, typed
+non-final rejection, evaluation exclusion and cancellation, compact engine menu
+and actual DataStore close/reopen persistence. No model binaries/test recordings
+were committed. Fake inference and synthetic PCM test logic, not recognition quality.
+
+The first full run caught Android lint MissingPermission at the extracted capture
+constructor; an explicit SecurityException boundary fixes permission revocation,
+without a lint suppression. A focused cancellation test also caught
+CancellationException being classified as IllegalStateException; cancellation now
+propagates before audio-error translation. All gates were rerun successfully.
+Known editor nullable-Recognizer diagnostics remain shifted onto unrelated Vosk
+installer lines despite successful compilation/lint; no source workaround added.
+
+Artifact: `app/build/outputs/apk/debug/NexaAI.debug.0.1.0.apk`, 199,485,210 bytes.
+SHA-256: `049ee8046ce18b0385b5f7b27f5e123fe8f980369a5ade5ea764543373b60aad`.
+This size is not runtime RAM. No dependency/version/manifest/privilege change.
+
+**Not verified:** real native Android model initialization/transcription for
+either engine, target acoustic regression, physical switching/mic exclusivity,
+accuracy/WER, load peaks/steady RAM, CPU, latency, sleep/ignition, or real radio
+effects. No target attachment check or physical run was performed. These gates
+require installed trusted models and consented target recordings, not additional
+fake-engine assertions. [Reproduction, report template and remaining gates](ASR_EVALUATION.md).
+Vosk remains the production default until target results justify changing it.
+
 ### Settings-Driven APK Naming (2026-10-29)
 
 `settings.gradle.kts` owns project name, app version name/code and enabled APK

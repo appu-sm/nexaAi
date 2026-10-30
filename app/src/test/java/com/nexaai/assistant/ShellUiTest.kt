@@ -76,11 +76,30 @@ class ShellUiTest {
         navigate("SETTINGS")
         compose.onNodeWithTag("display_name").assertExists()
         navigate("MODELS")
-        compose.onNodeWithText("No installed speech model").assertExists()
+        compose.onNodeWithText("Vosk - Indian English: model missing").assertExists()
         navigate("DIAGNOSTICS")
         compose.onNodeWithText("This device").assertExists()
         navigate("HELP")
         compose.onNodeWithText("Help and privacy").assertExists()
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "w360dp-h640dp-port")
+    fun selectedAsrPersistsAcrossScreenNavigationWithoutStartingListening() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("microphone").fetchSemanticsNodes().any { node ->
+                !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)
+            }
+        }
+        navigate("SETTINGS")
+        compose.onNodeWithTag("asr_engine").performScrollTo().assertTextContains("Vosk", substring = true).performClick()
+        compose.onNodeWithTag("asr_sherpa_onnx").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("ASR engine saved; applies to the next session").fetchSemanticsNodes().isNotEmpty() }
+        navigate("MODELS")
+        compose.onNodeWithText("sherpa-onnx - English: model missing").assertExists()
+        navigate("SETTINGS")
+        compose.onNodeWithTag("asr_engine").performScrollTo().assertTextContains("sherpa-onnx", substring = true)
+        compose.onNodeWithTag("hands_free_enabled").assertIsOff()
     }
 
     @Test fun savesNameAndRejectsCollidingAlias() {

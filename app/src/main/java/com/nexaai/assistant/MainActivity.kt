@@ -26,7 +26,8 @@ class MainActivity : ComponentActivity() {
                     (application as NexaAiApplication).wakeModelInstaller,
                     (application as NexaAiApplication).overlayControl,
                     (application as NexaAiApplication).voiceDiagnostics,
-                    com.nexaai.assistant.diagnostics.AndroidResourceMetrics(application)) as T
+                    com.nexaai.assistant.diagnostics.AndroidResourceMetrics(application),
+                    (application as NexaAiApplication)::evaluateAsr) as T
             }
         }
     }

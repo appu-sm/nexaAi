@@ -55,6 +55,8 @@ private enum class Destination(val title: String, val icon: ImageVector) {
 @Composable
 fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val evaluationReport by viewModel.evaluationReport.collectAsStateWithLifecycle()
+    var pendingEvaluation by remember { mutableStateOf<android.net.Uri?>(null) }
     val configuration = state.snapshot.configuration
     val editable = state.snapshot.ready && !state.busy && state.snapshot.warning == null
     val navController = rememberNavController()
@@ -90,6 +92,10 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
     }
     val wakeImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::installWakeModel)
+    }
+    val evaluationImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> pendingEvaluation = uri }
+    val evaluationExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let(viewModel::exportEvaluation)
     }
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -176,6 +182,8 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                         (state.voice as? VoiceState.Error)?.let {
                             Text(it.message, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
                         }
+                        Text("Selected ASR: ${AsrEngines.labels[configuration.settings.asrEngineId]} | Model: ${if (state.modelInstalled) "installed" else "missing"}\n${state.asrStatus}",
+                            Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
                         NavHost(navController, Destination.HOME.name, Modifier.weight(1f)) {
                             composable(Destination.HOME.name) {
                                 HomeScreen(configuration, state.controls, editable, state.handsFreeEnabled, viewModel::interpretCommand,
@@ -208,6 +216,7 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                     { exporter.launch("nexaai-configuration.json") }, viewModel::setTtsEnabled, state.speechOutput,
                                     state.handsFreeEnabled, viewModel::setWakePhrase,
                                     viewModel::setGrammarEnabled, viewModel::setGrammarWords, viewModel::setCommandAudioInput,
+                                    viewModel::setAsrEngine, state.voice,
                                     state.overlay, { enabled ->
                                         if (enabled && android.os.Build.VERSION.SDK_INT >= 33 &&
                                             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -217,9 +226,11 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                                     }, viewModel::setAutoStart, viewModel::setOverlayAppearance, viewModel::refreshOverlay)
                             }
                             composable(Destination.MODELS.name) { ModelsScreen(state.modelInstalled, state.voice,
-                                configuration.settings.wakePhrase, state.handsFreeEnabled, { wakeImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
-                                modelImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
-                            } }
+                                configuration.settings.asrEngineId,
+                                configuration.settings.wakePhrase, state.handsFreeEnabled, { wakeImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                                { modelImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                                evaluationReport, { evaluationImporter.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                                { evaluationExporter.launch("nexaai-asr-evaluation.json") }, viewModel::cancelVoice) }
                             composable(Destination.DIAGNOSTICS.name) { DiagnosticsScreen(device, state.controls, state.modelInstalled, state.speechOutput,
                                 configuration.settings, state.overlay,
                                 { viewModel.refreshControls(); viewModel.refreshOverlay() }) {
@@ -231,6 +242,12 @@ fun NexaApp(viewModel: AssistantViewModel, device: DeviceFacts) {
                     }
                 }
             }
+        }
+        pendingEvaluation?.let { uri ->
+            AlertDialog(onDismissRequest = { pendingEvaluation = null }, title = { Text("Run offline ASR evaluation?") },
+                text = { Text("Confirm consent for every recording in this ZIP. Both engines will process the same PCM sequentially. The exported report contains reference and recognized transcripts. No commands will execute.") },
+                confirmButton = { TextButton(onClick = { pendingEvaluation = null; viewModel.evaluateSpeech(uri) }) { Text("Confirm and run") } },
+                dismissButton = { TextButton(onClick = { pendingEvaluation = null }) { Text("Cancel") } })
         }
         reset?.let { target ->
             AlertDialog(onDismissRequest = { reset = null }, title = { Text("Reset $target?") },
@@ -446,6 +463,7 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
     setTtsEnabled: (Boolean) -> Unit, speechOutput: SpeechOutputState, handsFree: Boolean, setWakePhrase: (String) -> Unit,
     setGrammarEnabled: (Boolean) -> Unit, setGrammarWords: (List<String>) -> Unit,
     setCommandAudioInput: (String, Int) -> Unit,
+    setAsrEngine: (String) -> Unit, voice: VoiceState,
     overlay: OverlayRuntime, setOverlayEnabled: (Boolean) -> Unit, setAutoStart: (Boolean) -> Unit,
     setOverlayAppearance: (Int, Int) -> Unit, refreshOverlay: () -> Unit) {
     var name by rememberSaveable(settings.displayName) { mutableStateOf(settings.displayName) }
@@ -468,6 +486,21 @@ private fun SettingsScreen(settings: AssistantSettings, editable: Boolean, setNa
         Text("Offline-only: enforced. No network permission. Haptics and debug logs unavailable; no logs stored.")
         HorizontalDivider()
         Text("Listening", style = MaterialTheme.typography.titleLarge)
+        var engineMenu by remember { mutableStateOf(false) }
+        val canSwitch = editable && !handsFree && (voice is VoiceState.Idle || voice is VoiceState.Completed || voice is VoiceState.Error)
+        Box {
+            OutlinedButton(onClick = { engineMenu = true }, enabled = canSwitch, modifier = Modifier.testTag("asr_engine")) {
+                Icon(Icons.Default.RecordVoiceOver, null)
+                Text(AsrEngines.labels[settings.asrEngineId] ?: "Unknown ASR engine")
+                Icon(Icons.Default.ArrowDropDown, null)
+            }
+            DropdownMenu(engineMenu, { engineMenu = false }) {
+                AsrEngines.labels.forEach { (id, label) ->
+                    DropdownMenuItem(text = { Text(label) }, onClick = { engineMenu = false; setAsrEngine(id) },
+                        modifier = Modifier.testTag("asr_$id"))
+                }
+            }
+        }
         CommandMicrophoneSettings(settings, editable, setCommandAudioInput)
         OutlinedTextField(wakePhrase, { wakePhrase = it }, label = { Text("Wake phrase") },
             enabled = editable && !handsFree, singleLine = true, isError = phraseError != null,
@@ -539,19 +572,28 @@ private fun CommandMicrophoneSettings(settings: AssistantSettings, editable: Boo
 }
 
 @Composable
-private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, wakePhrase: String, handsFree: Boolean, importWakeModel: () -> Unit,
-    importModel: () -> Unit) = Page("Models") {
+private fun ModelsScreen(modelInstalled: Boolean, voice: VoiceState, engineId: String, wakePhrase: String, handsFree: Boolean, importWakeModel: () -> Unit,
+    importModel: () -> Unit, evaluationReport: String, evaluate: () -> Unit, exportEvaluation: () -> Unit, cancel: () -> Unit) = Page("Models") {
     Icon(Icons.Default.Storage, null, Modifier.size(40.dp))
-    Text(if (modelInstalled) "Vosk English model installed" else "No installed speech model", style = MaterialTheme.typography.titleLarge)
+    Text("${AsrEngines.labels[engineId]}: ${if (modelInstalled) "model installed" else "model missing"}", style = MaterialTheme.typography.titleLarge)
     Text("Speech: ${if (modelInstalled) "offline model installed" else "unavailable"}\nWake word: sherpa-onnx 1.12.14; $wakePhrase\nLocal LLM: off")
-    Text("Import the official vosk-model-small-en-us-0.15 ZIP (about 40 MB). It is stored in private app files; allow up to 160 MB expanded. No download is automatic.")
+    Text(if (engineId == AsrEngines.VOSK) "Import vosk-model-small-en-in-0.4 ZIP. Existing installed Vosk files are retained unchanged."
+        else "Import the int8 sherpa-onnx-streaming-zipformer-en-20M-2023-02-17 ZIP, containing the four ASR files documented in Models.")
     Text("Model license: Apache-2.0. Import requires the official model ZIP selected from local storage.")
-    val canImport = !handsFree && voice !is VoiceState.Initializing && voice !is VoiceState.Listening
+    val canImport = !handsFree && (voice is VoiceState.Idle || voice is VoiceState.Completed || voice is VoiceState.Error)
     Button(onClick = importModel, enabled = canImport) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Choose model ZIP") }
     Button(onClick = importWakeModel, enabled = canImport) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Choose wake-word ZIP") }
     Text("Wake model: English GigaSpeech 3.3M, Apache-2.0. Required: encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt, and one phrase in keywords.txt matching the saved wake phrase. Setup: docs/MODELS.md. No model is downloaded automatically.")
     (voice as? VoiceState.Error)?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
     Text("The model is loaded only on explicit listening/model installation. Target memory, latency, ABI and accuracy still need physical-device testing.")
+    HorizontalDivider()
+    Text("ASR evaluation", style = MaterialTheme.typography.titleLarge)
+    FlowRow {
+        TextButton(onClick = evaluate, enabled = canImport) { Icon(Icons.Default.Science, null); Text("Choose evaluation ZIP") }
+        TextButton(onClick = exportEvaluation, enabled = evaluationReport.isNotBlank() && canImport) { Icon(Icons.Default.SaveAlt, null); Text("Export evaluation") }
+        if (!canImport && !handsFree) TextButton(onClick = cancel) { Icon(Icons.Default.Stop, null); Text("Cancel") }
+    }
+    if (evaluationReport.isNotBlank()) Text(AsrEvaluationRunner.summary(evaluationReport), Modifier.testTag("evaluation_summary"))
 }
 
 @Composable
@@ -562,7 +604,7 @@ private fun DiagnosticsScreen(device: DeviceFacts, controls: CommandUiState, mod
     Section("Permissions", "Microphone: ${if (device.microphoneGranted) "granted" else "not granted; requested on explicit listening action"}.\nMicrophone/overlay foreground-service, notification and boot permissions declared. Overlay grant: ${overlay.permission}. Internet permission: not declared.")
     Section("Integrations", "Volume: ${controls.availability[CommandId.SET_VOLUME] ?: "not checked"}\nMedia: ${controls.availability[CommandId.PLAY] ?: "not checked"}\nApp launch: ${controls.availability[CommandId.LAUNCH_APP] ?: "not checked"}\nRadio: ${controls.availability[CommandId.OPEN_RADIO] ?: "not checked"}; receiver and tuner behavior unverified\nMicrophone/recognition: use Home push-to-talk\nHands-free: explicit-start microphone service; target unverified")
     Section("Overlay and startup", "Overlay configured: ${settings.overlayEnabled}\nOverlay service running: ${overlay.running}\nWindow attached: ${overlay.visible}\n${overlay.message}\nAuto-start configured: ${settings.autoStartAfterBoot}\n${overlay.startup}\nWake preference: ${settings.wakeWordEnabled}; saved preference is not proof of microphone activity.")
-    Section("Speech", "Vosk model: ${if (modelInstalled) "installed" else "missing"}\nSpeech output: ${when (speechOutput) {
+    Section("Speech", "Selected ASR: ${AsrEngines.labels[settings.asrEngineId]}; model: ${if (modelInstalled) "installed" else "missing"}\nSpeech output: ${when (speechOutput) {
         SpeechOutputState.Initializing -> "checking"
         SpeechOutputState.Ready -> "offline English voice available"
         is SpeechOutputState.Unavailable -> speechOutput.message

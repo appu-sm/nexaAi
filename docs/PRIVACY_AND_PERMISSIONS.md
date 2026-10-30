@@ -4,7 +4,7 @@
 
 The app stores settings, command definitions and a separate app allowlist in
 app-private Preferences DataStore. Development transcripts/results stay in memory
-only, not logs or storage. No audio, contacts, locations, analytics or telemetry
+only, not logs or storage. No live audio, contacts, locations, analytics or telemetry
 are collected. No runtime network permission is declared. Backup is disabled;
 Android 12+ cloud-backup/device-transfer rules also exclude app data. OEM backup
 behavior is not verified on the target. The debug APK includes Vosk native runtime
@@ -32,12 +32,29 @@ timing and process/resource activity: choose a trusted local provider and delete
 old reports there. Reset/process exit cannot delete previously exported documents.
 No telemetry, runtime network request or automatic persistent diagnostics is added.
 
+## Explicit ASR Evaluation
+
+Live recognition through either selected engine remains memory-only, with no
+automatic recording/logging or new permission. Evaluation is a separate explicit
+action on prerecorded consented PCM, never microphone capture. The selected ZIP
+is staged in private cache and deleted on completion/cancel/error (process kills
+can leave cache until Android cleanup/app-data removal). Originals remain under
+user control. The manifest and confirmation dialog require recording consent.
+
+Evaluation results retain reference/raw recognized transcripts and provenance
+in memory until process death or another run. Explicit SAF Export evaluation
+writes those fields plus counts, audio hashes, timings and supported process
+snapshots; it is not the redacted voice-diagnostics export. Export only to a
+trusted provider with speaker consent. Previously exported files are not deleted
+by reset/process exit. No transcript/PCM is sent over a network or automatically
+committed. Models and local audio/reports belong in ignored asr-local storage.
+
 ## Microphone and offline speech
 
 - `RECORD_AUDIO`: declared for push-to-talk/hands-free and requested only after an
 	explicit microphone or hands-free action. Denial leaves typed testing available;
 	permanent denial points to Android app settings.
-- Speech runs locally through Vosk. Capture uses a bounded in-memory PCM buffer;
+- Speech runs locally through selected Vosk or sherpa-onnx. Capture uses a bounded in-memory PCM buffer;
 	audio and transcripts are not saved, logged or uploaded. The imported model is
 	stored in private app files, not copied to public storage.
 - TTS uses an already-installed English voice not marked as network synthesis.

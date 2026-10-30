@@ -22,6 +22,41 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SpeechSessionTest {
+    @Test fun nonFinalCompletedResultNeverDispatches() = runTest {
+        val controller = Controller()
+        val engine = object : SpeechRecognizerEngine {
+            override suspend fun initialize() {}
+            override suspend fun recognize(onPartialResult: (String) -> Unit) = error("Structured method expected")
+            override suspend fun recognizeResult(onReady: () -> Unit, onResult: (RecognitionResult) -> Unit): RecognitionResult {
+                onReady()
+                return RecognitionResult("vosk", "volume up", false, 1, 2).also(onResult)
+            }
+            override fun stop() {}
+            override fun release() {}
+        }
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this) { false }
+        voice.start()
+        voice.awaitSessionEnd()
+        assertTrue(controller.commands.isEmpty())
+        assertTrue(voice.state.value is VoiceState.Error)
+    }
+
+    @Test fun evaluationTakesSameSessionGateAndCancellationNeverDispatches() = runTest {
+        val started = CompletableDeferred<Unit>()
+        val controller = Controller()
+        val engine = FakeEngine()
+        val voice = SpeechSessionCoordinator(engine, FakeInstaller(), dispatcher(controller), FakeOutput(), this) { false }
+        assertTrue(voice.evaluate { started.complete(Unit); kotlinx.coroutines.awaitCancellation() })
+        started.await()
+        assertFalse(voice.start())
+        assertFalse(voice.evaluate { "must not run" })
+        voice.stopAndJoin()
+        assertTrue(controller.commands.isEmpty())
+        assertEquals("", voice.evaluationReport.value)
+        assertFalse(voice.isActive)
+        assertEquals(1, engine.releases)
+    }
+
     @Test fun commandInputGainPreservesUnityBoundsReadCountAndClampsWithoutOverflow() {
         val samples = shortArrayOf(1000, -1000, 20000, -20000, 123)
         applyCommandInputGain(samples, 4, 100)

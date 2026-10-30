@@ -32,6 +32,7 @@ data class AssistantUiState(
     val modelInstalled: Boolean = false,
     val handsFreeEnabled: Boolean = false,
     val overlay: OverlayRuntime = OverlayRuntime(),
+    val asrStatus: String = "Not loaded",
 )
 
 data class CommandUiState(
@@ -58,6 +59,7 @@ class AssistantViewModel(
     private val overlayControl: OverlayControl? = null,
     private val diagnostics: VoiceDiagnostics = VoiceDiagnostics(),
     private val resources: ResourceMetrics? = null,
+    private val evaluateAsr: (suspend (Uri) -> String)? = null,
 ) : ViewModel() {
     val diagnosticReport = MutableStateFlow("")
     val diagnosticsEnabled = MutableStateFlow(diagnostics.enabled)
@@ -91,6 +93,15 @@ class AssistantViewModel(
         }
     } else null
     private val voiceState = voiceRuntime?.state ?: MutableStateFlow<VoiceState>(VoiceState.Idle("Speech engine unavailable."))
+    val evaluationReport = voiceRuntime?.evaluationReport ?: MutableStateFlow("")
+    fun evaluateSpeech(uri: Uri) {
+        val action = evaluateAsr ?: return
+        if (voiceRuntime?.evaluate { action(uri) } != true) message.value = "Stop listening before evaluating ASR."
+    }
+    fun exportEvaluation(uri: Uri) = perform("ASR evaluation exported") {
+        require(evaluationReport.value.isNotBlank()) { "Run evaluation first" }
+        documents.writeDiagnosticReport(uri, evaluationReport.value)
+    }
     private val outputState = voiceRuntime?.outputState ?: MutableStateFlow<SpeechOutputState>(SpeechOutputState.Unavailable("Speech output unavailable."))
     private val modelInstalled = voiceRuntime?.modelInstalled ?: MutableStateFlow(false)
     private val baseState = combine(repository.snapshots, busy, message, preview, controls) { snapshot, working, notice, imported, commandState ->
@@ -99,7 +110,17 @@ class AssistantViewModel(
     private val voiceUiState = combine(baseState, voiceState, outputState, modelInstalled) { shell, voice, speech, installed ->
         shell.copy(voice = voice, speechOutput = speech, modelInstalled = installed)
     }
-    val state = combine(voiceUiState, handsFreeControl?.enabled ?: MutableStateFlow(false),
+    private val engineUiState = combine(voiceUiState, voiceRuntime?.engineStatus ?: MutableStateFlow(RecognitionStatus.Unloaded)) { shell, status ->
+        val loaded = voiceRuntime?.activeEngineId?.let { AsrEngines.labels[it] } ?: "None"
+        shell.copy(modelInstalled = voiceRuntime?.selectedModelInstalled(shell.snapshot.configuration.settings.asrEngineId) ?: false,
+            asrStatus = "Loaded engine: $loaded; " + when (status) {
+                RecognitionStatus.Unloaded -> "Not loaded"
+                RecognitionStatus.Loading -> "Initializing"
+                RecognitionStatus.Ready -> "Ready"
+                is RecognitionStatus.Failed -> "${status.error.code}: ${status.error.detail}"
+            })
+    }
+    val state = combine(engineUiState, handsFreeControl?.enabled ?: MutableStateFlow(false),
         overlayControl?.state ?: MutableStateFlow(OverlayRuntime())) { shell, enabled, overlay ->
         shell.copy(handsFreeEnabled = enabled, overlay = overlay)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AssistantUiState())
@@ -228,6 +249,12 @@ class AssistantViewModel(
 
     fun setGrammarEnabled(enabled: Boolean) = perform("Grammar mode saved") {
         repository.update { it.copy(settings = it.settings.copy(grammarEnabled = enabled)) }
+    }
+
+    fun setAsrEngine(id: String) = perform("ASR engine saved; applies to the next session") {
+        require(voiceRuntime?.isActive != true) { "Stop listening, playback or evaluation before changing ASR engine." }
+        require(id in AsrEngines.labels) { "Unknown ASR engine" }
+        repository.update { it.copy(settings = it.settings.copy(asrEngineId = id)) }
     }
 
     fun setCommandAudioInput(source: String, gainPercent: Int) = perform("Command microphone saved") {

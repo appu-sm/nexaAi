@@ -17,6 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
+import com.nexaai.assistant.data.ConfigurationSnapshot
 
 class NexaAiApplication : Application() {
     val voiceDiagnostics = com.nexaai.assistant.diagnostics.VoiceDiagnostics(
@@ -33,24 +36,54 @@ class NexaAiApplication : Application() {
         )
     }
     val repository by lazy { ConfigurationRepository(store) }
+    private val observedConfiguration by lazy {
+        repository.snapshots.stateIn(voiceScope, SharingStarted.Eagerly, ConfigurationSnapshot())
+    }
     val commandRuntime by lazy {
         CommandRuntime(repository, AppAllowlistRepository(store), AndroidAppDevice(this),
             VerifiedVolumeController(AndroidVolumeDevice(this)), SessionMediaController(AndroidMediaDevice(this)),
             VerifiedRadioController(AndroidRadioDevice(this)))
     }
-    val speechEngine by lazy {
-        VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15"), voiceDiagnostics, input = {
+    private val commandCapture by lazy { AndroidCommandAudioCapture(voiceDiagnostics) }
+    private suspend fun commandInput(): CommandAudioInput {
+        val snapshot = repository.snapshots.first { it.ready }
+        check(snapshot.warning == null) { "Repair configuration before starting recognition." }
+        return snapshot.configuration.settings.let { CommandAudioInput(it.commandAudioSource, it.commandInputGainPercent) }
+    }
+    fun createAsrEngine(id: String, evaluation: Boolean = false): SpeechRecognizerEngine = when (id) {
+        AsrEngines.VOSK -> VoskSpeechRecognizerEngine(filesDir.resolve("vosk-model-small-en-us-0.15"), voiceDiagnostics,
+            input = { commandInput() }, capture = commandCapture, grammar = {
             val snapshot = repository.snapshots.first { it.ready }
             check(snapshot.warning == null) { "Repair configuration before starting recognition." }
-            snapshot.configuration.settings.let { CommandAudioInput(it.commandAudioSource, it.commandInputGainPercent) }
-        }) {
-            val snapshot = repository.snapshots.first { it.ready }
-            check(snapshot.warning == null) { "Repair configuration before starting recognition." }
-            if (!snapshot.configuration.settings.grammarEnabled) null
+            if (evaluation || !snapshot.configuration.settings.grammarEnabled) null
             else VoskGrammar.build(snapshot.configuration, commandRuntime.allowlist.apps())
+        })
+        AsrEngines.SHERPA -> SherpaSpeechRecognizerEngine(filesDir.resolve(SherpaAsrModel.DIRECTORY), commandCapture) { commandInput() }
+        else -> throw IllegalArgumentException("Unknown ASR engine")
+    }
+    val speechEngine by lazy {
+        SelectedSpeechEngine({ observedConfiguration.value.configuration.settings.asrEngineId },
+            AsrEngines.labels.keys.associateWith { id -> { createAsrEngine(id) } },
+            mapOf(AsrEngines.VOSK to VoskModelInstaller(filesDir, contentResolver),
+                AsrEngines.SHERPA to SherpaAsrModel.installer(filesDir, contentResolver))) {
+            val snapshot = observedConfiguration.first { it.ready || it.warning != null }
+            check(snapshot.ready && snapshot.warning == null) { "Repair configuration before starting recognition." }
         }
     }
-    val speechModelInstaller by lazy { VoskModelInstaller(filesDir, contentResolver) }
+    val speechModelInstaller get() = speechEngine
+    suspend fun evaluateAsr(uri: android.net.Uri): String {
+        val snapshot = repository.snapshots.first { it.ready }
+        check(snapshot.warning == null) { "Repair configuration before evaluation." }
+        val apps = commandRuntime.allowlist.apps()
+        val input = contentResolver.openInputStream(uri) ?: throw java.io.IOException("Could not open evaluation ZIP.")
+        return input.use { source ->
+            EvaluationArchive.read(source, cacheDir) { samples, model, provenance ->
+                AsrEvaluationRunner({ createAsrEngine(it, evaluation = true) },
+                    com.nexaai.assistant.diagnostics.AndroidResourceMetrics(this))
+                    .run(samples, snapshot.configuration, apps, model, provenance)
+            }
+        }
+    }
     val speechOutput by lazy { AndroidSpeechOutput(this, voiceDiagnostics) }
     private val voiceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val wakeModelInstaller by lazy { WakeModel.installer(filesDir, contentResolver) }

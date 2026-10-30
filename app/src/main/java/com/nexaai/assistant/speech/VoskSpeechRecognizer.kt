@@ -1,26 +1,14 @@
 package com.nexaai.assistant.speech
 
-import android.media.AudioFormat
 import com.nexaai.assistant.diagnostics.VoiceDiagnostics
-import com.nexaai.assistant.diagnostics.VoiceEvent
-import android.media.AudioRecord
-import android.media.AudioManager
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.media.MediaRecorder
 import android.net.Uri
 import android.content.ContentResolver
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.Executor
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
 import org.json.JSONArray
 import org.vosk.Model
@@ -46,131 +34,47 @@ class VoskSpeechRecognizerEngine(
     private val modelDirectory: File,
     private val diagnostics: VoiceDiagnostics = VoiceDiagnostics(),
     private val input: suspend () -> CommandAudioInput = { CommandAudioInput() },
+    capture: CommandAudioCapture = AndroidCommandAudioCapture(diagnostics),
     private val grammar: suspend () -> VoskGrammar? = { null },
-) : SpeechRecognizerEngine {
+) : StreamingSpeechEngine(capture, input) {
     @Volatile private var model: Model? = null
-    @Volatile private var recorder: AudioRecord? = null
-    private val recording = AtomicBoolean(false)
-    private val sampleRate = 16_000
-    private val maximumCaptureMillis = 15_000L
+    override val engineId = "vosk"
+    override val displayName = "Vosk - Indian English"
 
-    override suspend fun initialize() = withContext(Dispatchers.IO) {
-        if (model != null) return@withContext
-        if (!modelDirectory.isDirectory) throw IOException("Offline speech model is missing. Install the Vosk English model from Models.")
-        try {
-            model = Model(modelDirectory.absolutePath)
-        } catch (failure: LinkageError) {
-            throw IOException("Vosk native libraries are incompatible with this device ABI.", failure)
+    override fun loadModel() {
+        if (!modelDirectory.isDirectory) throw RecognitionException(RecognitionError(engineId,
+            RecognitionErrorCode.MISSING_MODEL, "Vosk model is missing. Import the Indian English model ZIP from Models."))
+        model = Model(modelDirectory.absolutePath)
+    }
+
+    override suspend fun createSession(): RecognitionSession {
+        val loaded = checkNotNull(model)
+        val sessionGrammar = grammar()
+        val recognizer = try {
+            if (sessionGrammar == null) Recognizer(loaded, 16000f)
+            else Recognizer(loaded, 16000f, JSONArray(sessionGrammar.phrases).toString())
         } catch (failure: Exception) {
-            throw IOException("Offline speech model is corrupt or incompatible. Reinstall the model ZIP.", failure)
+            throw IOException("Vosk recognizer initialization failed. Grammar mode requires a dynamic-grammar model; disable grammar or reinstall a compatible small model.", failure)
         }
-    }
-
-    override suspend fun recognize(onPartialResult: (String) -> Unit): String = recognize({}, onPartialResult)
-
-    override suspend fun recognize(onReady: () -> Unit, onPartialResult: (String) -> Unit): String = withContext(Dispatchers.IO) {
-        val loadedModel = model ?: throw IOException("Offline speech model is not loaded.")
-        check(recording.compareAndSet(false, true)) { "A microphone session is already active." }
-        val minimumBytes = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        if (minimumBytes <= 0 || minimumBytes > MAX_AUDIO_BUFFER_BYTES / 2) {
-            recording.set(false)
-            throw IOException("This microphone does not support 16 kHz mono PCM audio.")
-        }
-        val bufferBytes = maxOf(minimumBytes * 2, sampleRate)
-        val bufferSamples = bufferBytes / 2
-        var audio: AudioRecord? = null
-        var recordingCallback: AudioManager.AudioRecordingCallback? = null
-        var recognizer: Recognizer? = null
-        val interrupted = AtomicBoolean(false)
-        var captureStarted = false
-        try {
-            val captureInput = input()
-            val sessionGrammar = grammar()
-            recognizer = try {
-                if (sessionGrammar == null) Recognizer(loadedModel, sampleRate.toFloat())
-                else Recognizer(loadedModel, sampleRate.toFloat(), JSONArray(sessionGrammar.phrases).toString())
-            } catch (failure: Exception) {
-                throw IOException("Vosk recognizer initialization failed. Grammar mode requires a model supporting dynamic grammar; use the recommended small English model or turn grammar mode off.", failure)
-            }
-            val source = if (captureInput.source == "MIC") MediaRecorder.AudioSource.MIC else MediaRecorder.AudioSource.VOICE_RECOGNITION
-            audio = AudioRecord(source, sampleRate,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferBytes)
-            if (audio.state != AudioRecord.STATE_INITIALIZED) throw IOException("Microphone could not be initialized.")
-            recorder = audio
-            audio.startRecording()
-            if (audio.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IOException("Microphone did not enter recording state.")
-            captureStarted = true
-            diagnostics.record(VoiceEvent.ASR_READY)
-            onReady()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val callback = object : AudioManager.AudioRecordingCallback() {
-                    override fun onRecordingConfigChanged(configurations: List<android.media.AudioRecordingConfiguration>) {
-                        if (configurations.any { it.clientAudioSessionId == audio.audioSessionId && it.isClientSilenced }) {
-                            interrupted.set(true)
-                            stop()
-                        }
-                    }
-                }
-                recordingCallback = callback
-                audio.registerAudioRecordingCallback(Executor { task -> Handler(Looper.getMainLooper()).post(task) }, callback)
-            }
-            val samples = ShortArray(bufferSamples)
-            val startedAt = android.os.SystemClock.elapsedRealtime()
-            while (recording.get() && android.os.SystemClock.elapsedRealtime() - startedAt < maximumCaptureMillis) {
-                currentCoroutineContext().ensureActive()
-                val count = audio.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
-                if (interrupted.get()) throw IOException("Microphone was silenced by Android or another audio session. Try again.")
-                if (count < 0) {
-                    if (!recording.get()) break
-                    throw IOException("Microphone read failed ($count).")
-                }
-                if (count == 0) continue
-                applyCommandInputGain(samples, count, captureInput.gainPercent)
+        val start = System.nanoTime() / 1_000_000
+        return object : RecognitionSession {
+            private fun result(json: String, final: Boolean) = RecognitionResult(engineId,
+                JSONObject(json).optString(if (final) "text" else "partial").trim(), final,
+                start, System.nanoTime() / 1_000_000)
+            override fun acceptAudioFrame(samples: ShortArray, count: Int): RecognitionResult {
+                require(count in 1..samples.size)
                 val endpoint = recognizer.acceptWaveForm(samples, count)
-                val json = if (endpoint) recognizer.result else recognizer.partialResult
-                completedVoskTranscript(endpoint, json, onPartialResult)?.let {
-                    return@withContext sessionGrammar?.canonicalTranscript(it) ?: it
-                }
+                return result(if (endpoint) recognizer.result else recognizer.partialResult, endpoint)
             }
-            if (interrupted.get()) throw IOException("Microphone was interrupted; command discarded.")
-            val transcript = parseResult(recognizer.finalResult, "text")
-            sessionGrammar?.canonicalTranscript(transcript) ?: transcript
-        } catch (failure: SecurityException) {
-            throw IOException("Microphone permission is required to listen.", failure)
-        } catch (failure: IllegalStateException) {
-            throw IOException("Microphone became unavailable during recognition.", failure)
-        } finally {
-            recording.set(false)
-            recorder = null
-            audio?.let { capture ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    recordingCallback?.let { runCatching { capture.unregisterAudioRecordingCallback(it) } }
-                }
-                if (capture.recordingState == AudioRecord.RECORDSTATE_RECORDING) runCatching { capture.stop() }
-                capture.release()
-            }
-            if (captureStarted) diagnostics.record(VoiceEvent.ASR_CAPTURE_STOP)
-            recognizer?.close()
+            override fun finish() = result(recognizer.finalResult, true)
+            override fun commandTranscript(result: RecognitionResult) = sessionGrammar?.canonicalTranscript(result.transcript) ?: result.transcript
+            override fun close() { recognizer.close() }
         }
     }
 
-    override fun stop() {
-        recording.set(false)
-        recorder?.let { capture ->
-            if (capture.recordingState == AudioRecord.RECORDSTATE_RECORDING) runCatching { capture.stop() }
-        }
-    }
-
-    override fun release() {
-        stop()
+    override fun unloadModel() {
         model?.close()
         model = null
-    }
-
-    private fun parseResult(json: String, key: String): String = runCatching { JSONObject(json).optString(key).trim() }.getOrDefault("")
-
-    private companion object {
-        const val MAX_AUDIO_BUFFER_BYTES = 128 * 1024
     }
 }
 

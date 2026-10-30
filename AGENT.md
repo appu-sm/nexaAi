@@ -603,6 +603,23 @@ text are more important than decorative animations.
 
 ## 7. Speech recognition and audio lifecycle
 
+**Switchable ASR follow-up (2026-10-29):** Extend the existing
+SpeechRecognizerEngine, not a second command pipeline. Vosk 0.3.47 remains default
+and retains existing Indian English files/import path/endpoint/grammar behavior.
+The existing official sherpa-onnx 1.12.14 AAR also implements streaming English
+Zipformer 20M 2023-02-17 int8 ASR; its KWS detector stays unchanged. One shared
+command capture plus the existing coordinator's wake-to-ASR stop/close/join
+boundary prevents competing recorders. Schema-1 optional asrEngineId persists in
+the existing configuration; old files default vosk, unknown IDs fail closed.
+Only one complete ASR model loads lazily; switching releases the previous one.
+Typed final results alone reach existing validation/dispatch, never partials.
+Explicit consented PCM ZIP replay runs engines sequentially without microphone
+or hardware commands; transcript-bearing reports export only on user request.
+See docs/MODELS.md and docs/ASR_EVALUATION.md for setup, audited lifecycle,
+licenses and measurements. Host tests/build do not establish native Android
+recognition or target accuracy/latency/RAM/CPU. Keep Vosk default pending physical
+acceptance; do not broaden aliases or add fuzzy hardware matching to hide errors.
+
 Create a `SpeechEngine` interface with lifecycle methods such as: -
 `initialize(modelConfig)` - `startListening()` - `stopListening()` -
 `release()` - State/results/errors exposed through Flow or callbacks.

@@ -6,13 +6,22 @@ The model is loaded only on explicit speech initialization and reused for sessio
 
 | Category | Candidate | Current status |
 | --- | --- | --- |
-| Speech | Vosk Android `0.3.47` + `vosk-model-small-en-us-0.15` | Runtime integrated; model must be imported; device verification pending |
+| Speech (default) | Vosk Android `0.3.47` + existing `vosk-model-small-en-in-0.4` | Existing import preserved; target quality unmeasured |
+| Alternative speech | sherpa-onnx Android `1.12.14` + streaming English Zipformer 20M 2023-02-17 int8 | Real streaming API; manual four-file ZIP; target unverified |
 | Optional speech | Whisper.cpp tiny | Deferred pending measured latency and memory |
 | Wake word | sherpa-onnx Android `1.12.14`, English GigaSpeech KWS 3.3M 2024-01-01 | Real keyword runtime integrated; explicit Hey Nexa ZIP import required; target unverified |
 | Local LLM | No selected runtime/model | Off; not a release requirement |
 | TTS | Android TextToSpeech | Integrated; selects installed English voices without the network-synthesis feature; target availability unverified |
 
 ## Vosk setup
+
+For this comparison preserve the user's existing **Indian English**
+`vosk-model-small-en-in-0.4` (official catalogue: 36 MB, Apache-2.0).
+If installing afresh, select Vosk in Settings and import that official ZIP.
+The older US-English setup below remains valid for existing installations but
+is **not** an instruction to change the baseline. Both use the same legacy
+private directory; the app does not infer a version from its name.
+Record the actually imported version in evaluation `voskModel` metadata.
 
 1. On a trusted device, download `vosk-model-small-en-us-0.15.zip` manually from
 	the [official Vosk model catalog](https://alphacephei.com/vosk/models). The
@@ -32,7 +41,8 @@ The model is loaded only on explicit speech initialization and reused for sessio
 	small model. Native loading still checks model compatibility after import.
 	The ZIP is not copied to public storage. Removing app data or
 	uninstalling NexaAI deletes the installed model.
-5. Tap the Home microphone button. The engine loads one Vosk `Model` off the main
+5. Tap the Home microphone button. Import validates structure only; native loading
+	occurs lazily at recognition. The engine loads one Vosk `Model` off the main
 	thread, then reuses it; each recording creates and closes a recognizer. Missing,
 	incomplete, corrupt or ABI-incompatible data is shown as an error and never
 	falls back to online recognition.
@@ -93,6 +103,62 @@ names. Recognizer construction errors stop capture visibly rather than silently
 falling back to unrestricted decoding. Generation is bounded to 65,536 entries
 and 4 MiB of phrase data; overly large alias sets fail with an actionable error.
 CPU/RAM cost, accuracy and false-command rates still require on-device A/B tests.
+
+## sherpa-onnx Command ASR
+
+This uses the **existing** official `com.k2fsa:sherpa-onnx:1.12.14@aar`, with
+release URL/digest and native licensing documented under Hey Nexa below.
+Its manifest declares min SDK 21, below NexaAI's min 28; the cached AAR includes
+armeabi-v7a, arm64-v8a, x86 and x86_64. This supports Android 9-11 at packaging
+level only; CPU instructions, native loading and firmware behavior need target
+testing. No new runtime or network permission is added.
+
+Candidate: [sherpa-onnx-streaming-zipformer-en-20M-2023-02-17](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17),
+Apache-2.0 per its model card, exported from the small streaming LibriSpeech
+transducer. The pinned upstream [Kotlin configuration, type 10](https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.14/sherpa-onnx/kotlin-api/OnlineRecognizer.kt)
+uses the same int8 encoder/joiner and float decoder. Runtime: Apache-2.0;
+ONNX Runtime: MIT. Retain upstream notices when redistributing models/libraries.
+
+Selected files and upstream sizes/digests checked 2026-10-29:
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| encoder-epoch-99-avg-1.int8.onnx | 42845182 | 3810755ce7c3ab26b42a8bcf39d191308fa27fb0f53358823ba46141d03b7eb3 |
+| decoder-epoch-99-avg-1.onnx | 2092272 | 45a7f940ecfb53d89fa270ad11b88b961e53a317203eb24b1c8e95ed208b0f30 |
+| joiner-epoch-99-avg-1.int8.onnx | 259572 | e085d73b593cf9b0707f370dbd656d58327d3fe36d80d849202ef81df02cb01e |
+| tokens.txt | 5048 | Record locally with sha256sum |
+
+Total: 45,202,074 bytes (~43.1 MiB). Quantized storage, a small 20M streaming
+model, one CPU thread and greedy decoding make this a conservative candidate
+versus large/offline-batch models, not proof it fits RAM. Runtime RAM, load peaks,
+steady CPU, latency and Indian English accuracy are **Not measured**. General
+English does not guarantee improvement over Indian English Vosk. Vosk grammar/
+hints are not applied to sherpa; no custom grammar capability is assumed.
+
+On a trusted host, download only the four files above from the model's Files tab,
+verify the three weight hashes above and retain the tokens hash/source in your
+local run ledger. NexaAI performs no automatic download. After placing them in
+ignored `asr-local/sherpa-model/`:
+
+```sh
+cd asr-local/sherpa-model
+sha256sum encoder-epoch-99-avg-1.int8.onnx decoder-epoch-99-avg-1.onnx joiner-epoch-99-avg-1.int8.onnx tokens.txt
+zip -j ../nexa-sherpa-asr.zip encoder-epoch-99-avg-1.int8.onnx decoder-epoch-99-avg-1.onnx joiner-epoch-99-avg-1.int8.onnx tokens.txt
+```
+
+Transfer the ZIP, stop listening, select **sherpa-onnx - English** in Settings,
+then Models > Choose model ZIP. Files keep their exact names and install at
+`$filesDir/sherpa-asr-english`. The existing safe ZIP installer supports optional
+outer directories, staging/rollback, 20,000 entries and 160 MiB expanded total;
+required files must be nonempty and <=100 MiB each. Budget at least 160 MiB free
+for staging and old-model backup. Import checks structure, not authenticity/native
+compatibility. Loading is lazy; missing/corrupt/incompatible/memory-limited models
+fail visibly without Vosk fallback. Native model parsers are not sandboxed; import
+only trusted verified files.
+
+Wake ZIP import does not install ASR; ASR import does not replace wake models.
+Switching retains both engines' model files on disk but only one complete ASR
+model in memory. Models are not bundled/committed. See [replay](ASR_EVALUATION.md).
 
 ## Offline TTS
 
@@ -208,8 +274,9 @@ Quantized upstream files total roughly 5 MiB (not measured RAM). Wake capture us
 16 kHz mono PCM16, 100 ms frames, reusable 3.2 KiB PCM and 6.4 KiB float arrays,
 and a bounded AudioRecord buffer. The model loads once per enabled session; new
 streams discard old wake audio and new recorders separate wake and command capture.
-Vosk is loaded once alongside KWS for warm command activation; this increases idle
-RAM versus unloading Vosk after every command, and must be measured on the 2 GB unit.
+Selected ASR now loads at the first command, then caches alongside KWS for warm
+activation. This increases idle RAM after first use versus unloading after every
+command, and must be measured on the 2 GB unit.
 Both models are released when hands-free ends. No LLM is loaded.
 
 Compared with alternatives, Porcupine requires an access key and a separate

@@ -1,5 +1,21 @@
 # Command Catalogue
 
+## ASR Comparison
+
+Vosk (default) and sherpa-onnx feed the same parser/validator/dispatcher. Partial,
+cancelled and non-final results cannot execute; each accepted final is prepared
+and dispatched once. No fuzzy matching, alias additions or engine-specific number
+rewrites were added. Existing optional Vosk grammar canonicalization is preserved;
+it is disabled in the initial sequential comparison for fairness.
+
+[Corpus](asr-corpus.json) and [evaluation protocol](ASR_EVALUATION.md) distinguish
+raw text accuracy, canonical ID accuracy and parameter accuracy without executing
+controllers. Open FM, seek next/previous station and play music are deliberately
+unconfigured in the default registry; null expectations test rejection. Spoken
+volume/FM examples expose the unrestricted parser's lack of word-number handling,
+not permission to broaden command matching. Radio launch/tune/seek/AMS/INTRO/mute
+and unmute mappings and invalid-frequency rejection remain unchanged.
+
 Milestone 2 added typed deterministic execution; Milestone 3 adds push-to-talk
 input and Milestone 4 adds radio integration. Command configuration is preserved,
 and core execution requires no LLM or networking.

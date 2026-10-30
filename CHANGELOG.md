@@ -2,6 +2,19 @@
 
 ## 0.1.0 - In development
 
+- Add persistent switchable offline ASR using existing Vosk 0.3.47 (default,
+    Indian English import preserved) and real sherpa-onnx 1.12.14 streaming
+    English Zipformer 20M. Extend the existing contract with typed status/results,
+    share bounded command capture, lazily load one ASR model and release before
+    switching. Preserve wake detector, optional Vosk grammar, exact command safety,
+    radio mappings and opt-in startup/TTS behavior. Add explicit consented PCM ZIP
+    replay with sequential decoding, transcript/command/parameter counts, timings,
+    resource snapshots and transcript-bearing SAF JSON export. No new dependency,
+    runtime networking, model binaries or automatic download. 117 host tests,
+    debug build and lint pass (0 errors/26 existing warnings); native Android
+    recognition and head-unit accuracy/resources remain unverified. Setup,
+    corpus, source/licenses and acceptance protocol are documented.
+
 - Name packaged APKs `<project-name>.<build-type>.<version>.apk`, including
     NexaAI.debug.0.1.0.apk and NexaAI.release.0.1.0.apk. Centralize app version/code
     and enabled build types in settings.gradle.kts alongside the project name;

@@ -36,6 +36,32 @@ orientation is forced. No release signing credentials are included.
 
 ## Current scope
 
+### Switchable Offline ASR
+
+Settings > Listening > ASR engine selects **Vosk - Indian English** (default,
+`vosk`) or **sherpa-onnx - English** (`sherpa_onnx`). Selection persists in the
+existing DataStore configuration. Stop listening before changing it; the next
+session releases the old model before loading the new one. There is no silent
+fallback. Selected engine, loaded engine, model availability and initialization
+status are shown separately. Only the selected ASR model loads, lazily; wake-word
+spotting remains a separate unchanged detector.
+
+Existing Vosk files/import path are preserved, including an already imported
+`vosk-model-small-en-in-0.4`. Do not replace it for the initial comparison.
+The legacy private directory name contains `en-us-0.15`; that name does not
+identify the imported model. New sherpa ASR imports use the official int8
+`sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` candidate, not the KWS model.
+Runtime dependencies stay pinned at Vosk 0.3.47 and sherpa-onnx 1.12.14.
+See [model setup](docs/MODELS.md#sherpa-onnx-command-asr).
+
+Models > Choose evaluation ZIP runs both engines sequentially on consented
+16 kHz mono PCM16 recordings, without opening a microphone or executing commands.
+Confirm consent, then Export evaluation for raw transcripts, counts, timing and
+supported process snapshots. Follow the [reproduction protocol](docs/ASR_EVALUATION.md)
+and [corpus template](docs/asr-corpus.json). Recordings/models are not included.
+Native model loading/real offline recognition, accuracy, CPU and peak RAM remain
+physical acceptance gates; no superiority claim or default change is justified.
+
 Milestone 0 establishes a buildable Android baseline. Milestone 1 implements six
 screens, persistent versioned configuration and an editable command catalogue.
 Milestone 2 adds deterministic command execution and safe Android controls.
@@ -67,7 +93,7 @@ hardware actions. Test actual controls only while stationary.
 - Media requires optional notification-listener access in Commands/Diagnostics,
     exactly one active session and an advertised action. Results say request sent;
     playback changes are not verified.
-- Push-to-talk uses Vosk locally after a user imports the model ZIP; only final
+- Push-to-talk uses the selected local ASR engine after model ZIP import; only final
     transcripts reach the existing deterministic command dispatcher. No model is bundled.
 - Settings > Listening offers optional Vosk grammar mode (off by default) and
     saved custom vocabulary, one entry per line. Generated phrases follow enabled
@@ -135,7 +161,7 @@ Existing settings survive upgrades. Overlay and startup never enable wake word.
     opening Home or saying a wake word. The final recognized command uses the
     existing validated command engine and executes once. Tap during command
     capture/processing to stop; hold opens NexaAI. Dragging only moves the icon.
-    Grant microphone access once using Home first and import the Vosk model. Missing
+    Grant microphone access once using Home first and import the selected ASR model. Missing
     permission/model or a blocked service produces a visible error, not an automatic
     activity launch. The small body light turns saturated green during reported wake or
     command listening, and returns to blue while idle, loading, processing, speaking

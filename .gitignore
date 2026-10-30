@@ -34,3 +34,10 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Locally provisioned speech models and consented evaluation recordings/reports
+*.onnx
+*.pcm
+*.wav
+asr-local/
+nexaai-asr-evaluation*.json

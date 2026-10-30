@@ -61,12 +61,13 @@ class ConfigurationFlowTest {
         try {
             val first = ConfigurationRepository(PreferenceDataStoreFactory.create(scope = firstScope, produceFile = { file }))
             first.update { it.copy(settings = it.settings.copy(displayName = "Persistent", assistantEnabled = false, wakePhrase = "Hey Radio",
-                grammarEnabled = true, grammarCustomWords = listOf("navigation", "cabin music"))) }
+                grammarEnabled = true, grammarCustomWords = listOf("navigation", "cabin music"), asrEngineId = "sherpa_onnx")) }
             firstScope.coroutineContext[Job]!!.cancelAndJoin()
             val second = ConfigurationRepository(PreferenceDataStoreFactory.create(scope = secondScope, produceFile = { file }))
             assertEquals("Persistent", second.snapshots.first().configuration.settings.displayName)
             assertFalse(second.snapshots.first().configuration.settings.assistantEnabled)
             assertEquals("Hey Radio", second.snapshots.first().configuration.settings.wakePhrase)
+            assertEquals("sherpa_onnx", second.snapshots.first().configuration.settings.asrEngineId)
             assertTrue(second.snapshots.first().configuration.settings.grammarEnabled)
             assertEquals(listOf("navigation", "cabin music"), second.snapshots.first().configuration.settings.grammarCustomWords)
         } finally {

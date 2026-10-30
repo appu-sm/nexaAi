@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "consentConfirmed": false,
+  "provenance": "Template only: replace with consented speaker, microphone, source/gain, distance and noise conditions; no recordings supplied",
+  "voskModel": "vosk-model-small-en-in-0.4",
+  "sampleRate": 16000,
+  "channels": 1,
+  "encoding": "PCM_S16LE",
+  "samples": [
+    {"id":"volume_spoken", "reference":"Set volume to thirty percent.", "expectedCommandId":"SET_VOLUME", "expectedParameter":"30"},
+    {"id":"volume_digits", "reference":"Set volume to 30 percent.", "expectedCommandId":"SET_VOLUME", "expectedParameter":"30"},
+    {"id":"volume_up", "reference":"Increase volume.", "expectedCommandId":"VOLUME_UP"},
+    {"id":"radio_launch", "reference":"Launch radio.", "expectedCommandId":"OPEN_RADIO"},
+    {"id":"open_fm_unconfigured", "reference":"Open FM.", "expectedCommandId":null},
+    {"id":"seek_next_unconfigured", "reference":"Seek next station.", "expectedCommandId":null},
+    {"id":"seek_previous_unconfigured", "reference":"Seek previous station.", "expectedCommandId":null},
+    {"id":"next_station", "reference":"Next station.", "expectedCommandId":"SEEK_NEXT"},
+    {"id":"previous_station", "reference":"Previous station.", "expectedCommandId":"SEEK_PREVIOUS"},
+    {"id":"fm_spoken", "reference":"Tune to ninety-eight point three FM.", "expectedCommandId":"TUNE_FM", "expectedParameter":"98.3"},
+    {"id":"fm_digits", "reference":"Tune to 98.3 FM.", "expectedCommandId":"TUNE_FM", "expectedParameter":"98.3"},
+    {"id":"fm_invalid", "reference":"Tune to 150 FM.", "expectedCommandId":null},
+    {"id":"pause", "reference":"Pause music.", "expectedCommandId":"PAUSE"},
+    {"id":"play_unconfigured", "reference":"Play music.", "expectedCommandId":null},
+    {"id":"play", "reference":"Resume music.", "expectedCommandId":"PLAY"},
+    {"id":"ams", "reference":"Scan and save stations.", "expectedCommandId":"AUTO_MEMORY_SCAN"},
+    {"id":"intro", "reference":"Preview radio stations.", "expectedCommandId":"RADIO_INTRO_SCAN"},
+    {"id":"mute", "reference":"Mute radio.", "expectedCommandId":"MUTE_RADIO"},
+    {"id":"unmute", "reference":"Unmute radio.", "expectedCommandId":"UNMUTE_RADIO"},
+    {"id":"unrelated", "reference":"The weather is pleasant.", "expectedCommandId":null}
+  ]
+}
